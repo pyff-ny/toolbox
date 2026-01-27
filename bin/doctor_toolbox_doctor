@@ -1,0 +1,3 @@
+#!/usr/bin/env bash
+# Auto-generated wrapper for: /Users/jiali/toolbox/scripts/doctor/toolbox_doctor.sh
+exec "/Users/jiali/toolbox/scripts/doctor/toolbox_doctor.sh" "$@"

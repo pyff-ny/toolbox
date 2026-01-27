@@ -1,0 +1,3 @@
+#!/usr/bin/env bash
+# Auto-generated wrapper for: /Users/jiali/toolbox/scripts/doctor/check_disk_health.sh
+exec "/Users/jiali/toolbox/scripts/doctor/check_disk_health.sh" "$@"

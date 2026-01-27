@@ -1,0 +1,3 @@
+#!/usr/bin/env bash
+# Auto-generated wrapper for: /Users/jiali/toolbox/scripts/backup/open_last_snapshot.sh
+exec "/Users/jiali/toolbox/scripts/backup/open_last_snapshot.sh" "$@"

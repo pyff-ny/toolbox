@@ -1,0 +1,13 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+BASE_DIR="$(cd "$(dirname "$0")/.." && pwd)"
+TARGET="$BASE_DIR/scripts/backup/rsync_backup.sh"
+
+if [[ -x "$TARGET" ]]; then
+  exec "$TARGET" "$@"
+else
+  exec bash "$TARGET" "$@"
+fi
+
+exec bash "$TARGET" "$@"

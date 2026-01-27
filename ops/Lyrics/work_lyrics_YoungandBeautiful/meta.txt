@@ -1,0 +1,8 @@
+title=Young and Beautiful
+artist=Lana Del Rey
+lang=en
+source=/Users/jiali/Music/Music/YoungandBeautiful.m4a
+mode_used=hybrid
+interval=12
+model=/opt/homebrew/share/whisper-cpp/models/ggml-small.bin
+generated_at=2026-01-22

@@ -1,0 +1,4 @@
+#!/usr/bin/env bash
+# Auto-generated launcher for: $HOME/toolbox/scripts/backup/rsync_backup_final.sh
+SCRIPTS_DIR="${SCRIPTS_DIR:-$HOME/toolbox/scripts}"
+exec "$SCRIPTS_DIR/backup/rsync_backup_final.sh" "$@"

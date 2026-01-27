@@ -1,0 +1,3 @@
+#!/usr/bin/env bash
+# Auto-generated wrapper for: /Users/jiali/toolbox/scripts/backup/rsync_backup/rsync_backup_final.sh
+exec "/Users/jiali/toolbox/scripts/backup/rsync_backup/rsync_backup_final.sh" "$@"

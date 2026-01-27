@@ -1,0 +1,3 @@
+#!/usr/bin/env bash
+# Auto-generated wrapper for: /Users/jiali/toolbox/scripts/net/netcheck.sh
+exec "/Users/jiali/toolbox/scripts/net/netcheck.sh" "$@"

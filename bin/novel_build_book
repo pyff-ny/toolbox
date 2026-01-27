@@ -1,0 +1,3 @@
+#!/usr/bin/env bash
+# Auto-generated wrapper for: /Users/jiali/toolbox/scripts/novel/build_book.py
+exec "/Users/jiali/toolbox/scripts/novel/build_book.py" "$@"
