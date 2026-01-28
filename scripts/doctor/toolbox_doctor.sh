@@ -30,12 +30,14 @@ for f in "$HOME/toolbox/bin/"*; do
   fi
 done
 
+
 # -------------------------
 # key folders
 # -------------------------
+
 [[ -d "$HOME/toolbox" ]] && ok "~/toolbox exists" || bad "~/toolbox missing"
-[[ -d "$HOME/toolbox/Logs" ]] && ok "~/Logs exists" || bad "~/Logs missing"
-[[ -d "$HOME/toolbox/IT-Reports" ]] && ok "Reports folder exists" || ok "Reports folder will be created on run"
+[[ -d "$HOME/toolbox/_out/Logs" ]] && ok "~/Logs exists" || bad "~/Logs missing"
+[[ -d "$HOME/toolbox/_out/IT-Reports" ]] && ok "Reports folder exists" || ok "Reports folder will be created on run"
 
 # -------------------------
 # ssh preflight (optional but recommended)
