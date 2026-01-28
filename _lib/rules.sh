@@ -22,6 +22,7 @@ CAP_REGISTRY=(
   "media/lyrics_auto_no_vad.sh|NEEDS_ARGS"
   "media/lyrics_import_obsidian.sh|NEEDS_ARGS"
   "doctor/toolbox_doctor.sh|HIDE_PROMPTS"
+  "help/open_troubleshooting.sh|HIDE_PROMPTS,HIDE_DRYRUN"
 )
 
 cap_get_flags() {

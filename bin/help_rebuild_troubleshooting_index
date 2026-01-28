@@ -1,0 +1,4 @@
+#!/usr/bin/env bash
+# Auto-generated launcher for: $HOME/toolbox/scripts/help/rebuild_troubleshooting_index.sh
+SCRIPTS_DIR="${SCRIPTS_DIR:-$HOME/toolbox/scripts}"
+exec "$SCRIPTS_DIR/help/rebuild_troubleshooting_index.sh" "$@"
