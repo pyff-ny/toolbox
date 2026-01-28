@@ -13,6 +13,8 @@ CAP_REGISTRY=(
   "backup/rsync_backup_final.sh|DRYRUN,HIDE_PROMPTS"
   "backup/backup_menu.sh|HIDE_PROMPTS"
   "backup/open_last_snapshot.sh|HIDE_PROMPTS"
+  "backup/sync_history.sh|HIDE_PROMPTS"
+  "backup/sync_reports.sh|HIDE_PROMPTS"
   "novel/novel_crawler.py|HIDE_PROMPTS"
   "novel/novel_novel_crawler.py|HIDE_PROMPTS"
   "disk/check_disk_health.sh|HIDE_PROMPTS"
