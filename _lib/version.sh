@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 
-TOOLBOX_VERSION="2026-01-27.18"
+TOOLBOX_VERSION="2026-01-27.2202"
+
 #==============
 #18. 修改了open_last_snapshot.sh中环境变量加载方式，改为从global.env加载。
 #17. 修复了rules.sh中backup/open_last_snapshot.sh的HIDE_PROMPTS标记。

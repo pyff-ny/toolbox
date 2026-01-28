@@ -1,8 +1,5 @@
 #!/usr/bin/env bash
 set -Eeuo pipefail
-TOOLBOX_VERSION="2026-01-27.22"
-#==============
-#18. 修改了open_last_snapshot.sh中环境变量加载方式，改为从global
 
 TOOLBOX_DIR="${TOOLBOX_DIR:-$HOME/toolbox}"
 SCRIPTS_DIR="${SCRIPTS_DIR:-$TOOLBOX_DIR/scripts}"
@@ -14,11 +11,11 @@ RULES_SH="$TOOLBOX_DIR/_lib/rules.sh"
 # shellcheck source=/dev/null
 source "$RULES_SH"
 
-TOOLBOX_VERSION="$TOOLBOX_DIR/_lib/version.sh"
-[[ -f "$TOOLBOX_VERSION" ]] || die "version file not found: $TOOLBOX_VERSION"
+VERSION_FILE="$TOOLBOX_DIR/_lib/version.sh"
+[[ -f "$VERSION_FILE" ]] || die "version file not found: $VERSION_FILE"
 # shellcheck source=/dev/null
-source "$TOOLBOX_VERSION"
-echo "[INFO] toolbox version: $TOOLBOX_VERSION"
+source "$VERSION_FILE"
+echo "[INFO] toolbox version: $VERSION_FILE"
 
 command -v fzf >/dev/null 2>&1 || { echo "[ERROR] fzf not found"; exit 1; }
 

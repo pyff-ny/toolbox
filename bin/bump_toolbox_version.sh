@@ -12,8 +12,8 @@ CHANGELOG_FILE="${CHANGELOG_FILE:-$TOOLBOX_DIR/changelog/changelog.md}"
 # Optional: where TOOLBOX_VERSION is defined (if you want to auto-edit it)
 # If unset, script will only print new version and write changelog.
 VERSION_FILES_DEFAULT=(
-  #"$TOOLBOX_DIR/_lib/version.sh"
-  "$TOOLBOX_DIR/scripts/toolbox_super_compatible.sh"
+
+"$TOOLBOX_DIR/_lib/version.sh"
   
 )
 
@@ -88,7 +88,7 @@ fi
 # -------------------------
 # Compute new version
 # -------------------------
-NEW_VERSION="$(date '+%Y-%m-%d.%H')"
+NEW_VERSION="$(date '+%Y-%m-%d.%H%M')"
 
 # -------------------------
 # Reason input
@@ -194,11 +194,31 @@ if [[ $NO_VERSION_FILES -eq 0 ]]; then
   for vf in "${VERSION_FILES[@]}"; do
     [[ -f "$vf" ]] || continue
     # Replace first occurrence of TOOLBOX_VERSION="..."
-    if grep -qE '^[[:space:]]*TOOLBOX_VERSION=' "$vf"; then
-      # macOS compatible sed
-      sed -i '' -E "0,/^[[:space:]]*TOOLBOX_VERSION=/s|^[[:space:]]*TOOLBOX_VERSION=.*|TOOLBOX_VERSION=\"${NEW_VERSION}\"|" "$vf"
+        if grep -qE '^[[:space:]]*TOOLBOX_VERSION=' "$vf"; then
+      # Safer than sed -i on macOS: write to temp then mv
+      tmp_vf="$(mktemp "${vf}.tmp.XXXXXX")"
+      awk -v v="$NEW_VERSION" '
+        BEGIN{done=0}
+        {
+          if (!done && $0 ~ /^[[:space:]]*TOOLBOX_VERSION=/) {
+            print "TOOLBOX_VERSION=\"" v "\""
+            done=1
+            next
+          }
+          print
+        }
+      ' "$vf" > "$tmp_vf"
+
+      if cmp -s "$vf" "$tmp_vf"; then
+        rm -f "$tmp_vf"
+      else
+        mv -f "$tmp_vf" "$vf"
+      fi
+
       UPDATED_ANY=1
+      echo "[OK] Updated: $vf"
     fi
+
   done
 fi
 
