@@ -12,6 +12,7 @@ RULES_SH="$TOOLBOX_DIR/_lib/rules.sh"
 # shellcheck source=/dev/null
 source "$RULES_SH"
 
+echo "VERSION_STR="toolbox_super_compatible.sh_2026-01-28.2""
 command -v fzf >/dev/null 2>&1 || { echo "[ERROR] fzf not found"; exit 1; }
 
 # ---------- Input Helpers ----------
@@ -316,11 +317,14 @@ menu_actions() {
   {
     # Run now / dry-run
     if ! cap_has "$rel" "NEEDS_ARGS"; then
-      echo "Run now"
-      if cap_has "$rel" "DRYRUN"; then
+       echo "Run now"
+
+      # 只有同时满足：支持 DRYRUN 且没有被隐藏，才显示
+      if cap_has "$rel" "DRYRUN" && ! cap_has "$rel" "HIDE_DRYRUN"; then
         echo "Run with --dry-run"
       fi
     fi
+
 
     # Run with prompts
     if ! cap_has "$rel" "HIDE_PROMPTS"; then

@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 
-TOOLBOX_VERSION="2026-01-27.2343"
+TOOLBOX_VERSION="2026-01-28.0057"
 
 #==============
 #18. 修改了open_last_snapshot.sh中环境变量加载方式，改为从global.env加载。

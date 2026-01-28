@@ -16,10 +16,12 @@ CAP_REGISTRY=(
   "backup/sync_reports.sh|HIDE_PROMPTS"
   "novel/novel_crawler.py|HIDE_PROMPTS"
   "novel/novel_novel_crawler.py|HIDE_PROMPTS"
-  "disk/check_disk_health.sh|HIDE_PROMPTS"
-  "disk/check_disk_health_merged_v2.sh|HIDE_PROMPTS"
+  "disk/ssd_monitor.sh|HIDE_PROMPTS"
+  "disk/disk_health_check.sh|HIDE_PROMPTS"
+  #"disk/check_disk_health_merged_v2.sh|HIDE_PROMPTS"
   "media/lyrics_auto_no_vad.sh|NEEDS_ARGS"
   "media/lyrics_import_obsidian.sh|NEEDS_ARGS"
+  "doctor/toolbox_doctor.sh|HIDE_PROMPTS"
 )
 
 cap_get_flags() {
@@ -68,3 +70,4 @@ cap_show_run_now() {
   # Run now hidden if NEEDS_ARGS
   ! cap_needs_args "$rel"
 }
+

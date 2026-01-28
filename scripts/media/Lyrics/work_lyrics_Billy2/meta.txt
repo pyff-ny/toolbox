@@ -1,0 +1,8 @@
+title=Young and Beautiful
+artist=Lana Del Rey
+lang=ja
+source=/Users/jiali/toolbox/scripts/media/Billy2.m4a
+mode_used=hybrid
+interval=12
+model=/opt/homebrew/share/whisper-cpp/models/ggml-small.bin
+generated_at=2026-01-28

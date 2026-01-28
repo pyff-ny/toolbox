@@ -67,8 +67,8 @@ mkdir -p "$WORK_DIR/wav" "$WORK_DIR/txt"
 
 # Save meta info
 cat > "$WORK_DIR/meta.txt" <<EOF
-title=Young and Beautiful
-artist=Lana Del Rey
+title=
+artist=Billy Easton
 lang=$LANG
 source=$IN
 mode_used=$MODE
@@ -251,7 +251,7 @@ PY
 
 # ---- Slice + transcribe ----
 echo "🎵 Transcribing segments..."
-MERGED="${WORK_DIR}/lyrics.en.srt.txt"
+MERGED="${WORK_DIR}/lyrics.ja.srt.txt"
 : > "$MERGED"
 
 i=0
