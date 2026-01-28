@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 set -Eeuo pipefail
+die(){ echo "[ERROR] $*" >&2; exit 1; }
 
 TOOLBOX_DIR="${TOOLBOX_DIR:-$HOME/toolbox}"
 SCRIPTS_DIR="${SCRIPTS_DIR:-$TOOLBOX_DIR/scripts}"
@@ -11,17 +12,9 @@ RULES_SH="$TOOLBOX_DIR/_lib/rules.sh"
 # shellcheck source=/dev/null
 source "$RULES_SH"
 
-VERSION_FILE="$TOOLBOX_DIR/_lib/version.sh"
-[[ -f "$VERSION_FILE" ]] || die "version file not found: $VERSION_FILE"
-# shellcheck source=/dev/null
-source "$VERSION_FILE"
-echo "[INFO] toolbox version: $VERSION_FILE"
-
 command -v fzf >/dev/null 2>&1 || { echo "[ERROR] fzf not found"; exit 1; }
 
-# ---------- Utils ----------
-die(){ echo "[ERROR] $*" >&2; exit 1; }
-
+# ---------- Input Helpers ----------
 #为什么不用普通 read -r？因为你这里是 fzf + trap 场景，明确从 /dev/tty 读最稳。
 read_tty() {
   local prompt="$1"
@@ -58,9 +51,6 @@ list_cmds_in_dir() {
     -print | sed "s|^$dir/||" | sort
 }
 
-# ---------- Exec ----------
-#!/usr/bin/env bash
-
 # ===================================================================
 # run_cmd - 稳定版本（兼容性最强）
 # ===================================================================
@@ -82,7 +72,7 @@ run_cmd() {
 
   # 显示运行信息
   echo
-  echo "[RUN] $rel/$fullpath/$filename"
+  echo "[RUN] $rel  ->  $fullpath/$filename"
   
   if [[ ${#extra_args[@]} -gt 0 ]]; then
     echo "[ARGS] ${extra_args[*]}"
@@ -128,8 +118,8 @@ run_cmd() {
   esac
   
   echo
-  echo "Press Enter to continue..."
-  read -r
+  read_tty "Press Enter to continue..."
+
 }
 
 
@@ -153,89 +143,51 @@ ensure_wrapper_dir() {
 }
 
 lyrics_auto_no_vad() {
-  local script="$SCRIPTS_DIR/media/lyrics_auto_no_vad.sh"
-  [[ -f "$script" ]] || die "lyrics script not found: $script"
+  local rel="media/lyrics_auto_no_vad.sh"
+  local dir="$SCRIPTS_DIR/media"
+  local file="lyrics_auto_no_vad.sh"
+  [[ -f "$dir/$file" ]] || die "lyrics script not found: $dir/$file"
 
   local in lang mode interval
   in="$(read_tty "Audio file path: ")"
   [[ -n "$in" ]] || { echo "[WARN] cancelled"; return 0; }
   [[ -f "$in" ]] || die "audio file not found: $in"
 
-  lang="$(read_tty "Lang (default: en): ")"
-  lang="${lang:-en}"
-
-  mode="$(read_tty "Mode (auto|fixed|hybrid) (default: hybrid): ")"
-  mode="${mode:-hybrid}"
-
-  interval="$(read_tty "Interval seconds (default: 12): ")"
-  interval="${interval:-12}"
+  lang="$(read_tty "Lang (default: en): ")"; lang="${lang:-en}"
+  mode="$(read_tty "Mode (auto|fixed|hybrid) (default: hybrid): ")"; mode="${mode:-hybrid}"
+  interval="$(read_tty "Interval seconds (default: 12): ")"; interval="${interval:-12}"
 
   echo
-  run_cmd "$(dirname "$script")" "$(basename "$script")" "$in" "$lang" "$mode" "$interval"
+  run_cmd "$rel" "$dir" "$file" "$in" "$lang" "$mode" "$interval"
 }
 
 lyrics_import_obsidian() {
-  local script="$SCRIPTS_DIR/media/lyrics_import_obsidian.sh"
-  [[ -f "$script" ]] || die "lyrics import script not found: $script"
+  local rel="media/lyrics_import_obsidian.sh"
+  local dir="$SCRIPTS_DIR/media"
+  local file="lyrics_import_obsidian.sh"
+  [[ -f "$dir/$file" ]] || die "lyrics import script not found: $dir/$file"
 
   local workdir
   workdir="$(read_tty "Workdir path (e.g. .../work_lyrics_xxx): ")"
   [[ -n "$workdir" ]] || { echo "[WARN] cancelled"; return 0; }
   [[ -d "$workdir" ]] || die "workdir not found: $workdir"
 
-  # 可选：让导入脚本自己从 meta.txt 读；这里只传 workdir 即可
   echo
-  run_cmd "$(dirname "$script")" "$(basename "$script")" "$workdir"
+  run_cmd "$rel" "$dir" "$file" "$workdir"
 }
-
-# ---------- Rules Loading ----------
-RULES_FILE="${RULES_FILE:-$TOOLBOX_DIR/conf/rules.conf}"
-
-load_rules() {
-  [[ -f "$RULES_FILE" ]] || return 0
-  # shellcheck source=/dev/null
-  source "$RULES_FILE"
-}
-
-in_array() {
-  local needle="$1"; shift
-  local x
-  for x in "$@"; do [[ "$x" == "$needle" ]] && return 0; done
-  return 1
-}
-
-# 把 REL（例如 media/lyrics_auto_no_vad.sh）作为规则 key
-is_needs_args(){ in_array "$1" "${NEEDS_ARGS[@]:-}"; }
-is_passthrough(){ in_array "$1" "${ALWAYS_PASSTHROUGH[@]:-}"; }
-supports_dryrun(){ in_array "$1" "${SUPPORTS_DRYRUN[@]:-}"; }
-is_dangerous(){ in_array "$1" "${DANGEROUS_CMDS[@]:-}"; }
 
 
 run_with_prompts() {
-  local dir="$1"
-  local cmd="$2"
-  local root="${3:-}"
-  local sub="${4:-}"
-
-  case "$cmd" in
-    novel_crawler*|novel_novel_crawler*)
-      # 对 Novel Crawler：永远走原生交互（直通）
-      #不输出Run with prompts
-      ;;
-    check_disk_health*)
-    # 对 check_disk_health：永远走直通
-      ;;
-    lyrics_auto_no_vad.sh)
-      lyrics_auto_no_vad
-      ;;
-    lyrics_import_obsidian.sh)
-      lyrics_import_obsidian
-      ;;
+  local rel="$1"
+  case "$rel" in
+    media/lyrics_auto_no_vad.sh) lyrics_auto_no_vad ;;
+    media/lyrics_import_obsidian.sh) lyrics_import_obsidian ;;
     *)
-      echo " Run with prompts"
+      echo "[INFO] No prompt-mode handler for: $rel"
       ;;
   esac
 }
+
 
 
 
@@ -395,8 +347,7 @@ menu_actions() {
 
 # ---------- Main Loop ----------
 main() {
-  load_rules
-
+  
   [[ -d "$SCRIPTS_DIR" ]] || die "SCRIPTS_DIR not found: $SCRIPTS_DIR"
 
   # 主循环忽略 INT，避免 Ctrl+C 直接退出整个 toolbox
@@ -448,7 +399,7 @@ main() {
           ;;
         "Run with prompts")
           # 扁平化后：不再传 ROOT/SUB
-          run_with_prompts "$REL" "$DIR" "$FILE" "" ""
+          run_with_prompts "$REL"
           ;;
         "Create wrapper")
           # 这里建议把 category 传 REL 的 dirname，避免重名
