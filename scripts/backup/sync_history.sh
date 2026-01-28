@@ -4,8 +4,11 @@ set -euo pipefail
 
 # default: show last 10 records
 N="${1:-10}"
+ENV_FILE="${ENV_FILE:-$HOME/toolbox/conf/global.env}"
+[[ -f "$ENV_FILE" ]] && source "$ENV_FILE" || { echo "[ERROR] Env file not found: $ENV_FILE" >&2; exit 1; } 
 
-INDEX="${INDEX:-$HOME/Logs/snapshot_index.tsv}"
+
+INDEX="${INDEX:-$LOG_DIR/snapshot_index.tsv}"
 
 if [[ ! -f "$INDEX" ]]; then
   echo "[ERROR] index not found: $INDEX"

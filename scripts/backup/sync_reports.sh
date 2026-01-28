@@ -6,12 +6,13 @@ set -euo pipefail
 #再做delete 二次确认（基于最终值）
 die() { printf '[ERROR] %s\n' "$*" >&2; exit 1; }
 ts(){ date +"%Y%m%d_%H%M%S"; }
+ENV_FILE="${ENV_FILE:-$HOME/toolbox/conf/global.env}"
+[[ -f "$ENV_FILE" ]] && source "$ENV_FILE" || die "Env file not found: $ENV_FILE" 
 
 ROOT="${TOOLBOX_ROOT:-$HOME/toolbox}"
 CONF_DIR="${CONF_DIR:-$ROOT/conf}"
 CFG="${CFG:-$CONF_DIR/ssh_sync.conf}"
 
-LOG_DIR="${LOG_DIR:-$HOME/Logs}"
 mkdir -p "$CONF_DIR" "$LOG_DIR"
 
 [[ -f "$CFG" ]] || die "Missing config: $CFG"

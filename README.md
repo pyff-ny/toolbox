@@ -1,5 +1,12 @@
 # toolbox
 
+# 变更流程
+ 1. 变更点一句话（scope）
+ 2. shellcheck / 最小运行测试（smoke test）
+ 3. 输出摘要看一眼（env + 路径 + log）
+ 4. commit message 用“动词 + 影响面”写清楚
+===
+
 Personal CLI toolbox (single source of truth: `scripts/`, launchers in `bin/`).
 toolbox_super_compatible 是主入口
 其它旧入口已废弃（legacy）
