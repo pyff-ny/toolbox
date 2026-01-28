@@ -331,13 +331,6 @@ menu_actions() {
     echo "Preview wrapper"
     echo "Open in editor"
     echo "Delete wrapper"
-
-    # Special actions: 也可以继续写 case rel
-    case "$rel" in
-      media/lyrics_auto_no_vad.sh)   echo "Lyrics:Transcribe(whisper-cpp)" ;;
-      media/lyrics_import_obsidian.sh) echo "Lyrics:Import to Obsidian" ;;
-    esac
-
     echo "Back"
   } | choose_one "Action > "
 }
