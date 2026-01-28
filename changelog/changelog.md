@@ -1,26 +1,10 @@
-# Changelog
-## Changelog 模板（发布公告：对使用者有什么变化）
-目标：用户（也包括未来的你当用户）看完就知道“我现在能干什么、有什么不同”。
-结构固定
-Added / Changed / Fixed / Removed / Breaking
-例子
-
-## [Unreleased]
-### Added
-- 
-### Changed
-- 
-### Fixed
-- 
-### Removed
-- 
-### Breaking
-- 
-## [2026-01-26]
-### Changed
-- `toolbox_super_compatible` is now the primary entry point 我确定了toolbox_super_compatible是目前唯一入口
-- Output artifacts are stored under `_out/` (ignored by git) 统一了脚本产出地址到 _out/，便于.gitignore维护
-- Action menu hides "Run with prompts" for unsupported commands 对于使用不到 "Run with prompts"的子程序，使prompts不可见，避免误操作
-
-### Fixed
-- Ctrl+C handling now cleanly returns to menu (exit 130) 改进了 ctrl c 命令，停止目前子程序后可以正常返回到主菜单
+#10. open_last_snapshot---隐藏了run with prompts选项 | files: changelog/changelog.md,conf/global.env,conf/net.env,ops/legacy:/toolbox_menu_legacy.sh,scripts/backup_menu.sh,scripts/backup/backup.sh,scripts/backup/load_conf.sh,scripts/backup/open_last_snapshot.sh,scripts/misc/lyrics_import_obsidian.sh,scripts/net/wifi_watch.sh,scripts/rsync_backup_final.sh,scripts/toolbox_improved.sh,scripts/toolbox_super_compatible_no_cmd.sh,scripts/toolbox_super_compatible.sh
+#9. 修改了wifiwatch的log保存地址 | files: changelog/changelog.md,conf/global.env,conf/net.env,ops/legacy:/toolbox_menu_legacy.sh,scripts/backup_menu.sh,scripts/backup/backup.sh,scripts/backup/load_conf.sh,scripts/backup/open_last_snapshot.sh,scripts/misc/lyrics_import_obsidian.sh,scripts/net/wifi_watch.sh,scripts/rsync_backup_final.sh,scripts/toolbox_improved.sh,scripts/toolbox_super_compatible_no_cmd.sh,scripts/toolbox_super_compatible.sh
+#8. 修改了wifiwatch的log保存地址 | files: changelog/changelog.md,conf/global.env,conf/net.env,ops/legacy:/toolbox_menu_legacy.sh,scripts/backup_menu.sh,scripts/backup/backup.sh,scripts/backup/load_conf.sh,scripts/backup/open_last_snapshot.sh,scripts/misc/lyrics_import_obsidian.sh,scripts/net/wifi_watch.sh,scripts/rsync_backup_final.sh,scripts/toolbox_improved.sh,scripts/toolbox_super_compatible_no_cmd.sh,scripts/toolbox_super_compatible.sh
+#7. 修改了wifiwatch的log保存地址 | files: changelog/changelog.md,conf/global.env,conf/net.env,ops/legacy:/toolbox_menu_legacy.sh,scripts/backup_menu.sh,scripts/backup/backup.sh,scripts/backup/load_conf.sh,scripts/backup/open_last_snapshot.sh,scripts/misc/lyrics_import_obsidian.sh,scripts/net/wifi_watch.sh,scripts/rsync_backup_final.sh,scripts/toolbox_improved.sh,scripts/toolbox_super_compatible_no_cmd.sh,scripts/toolbox_super_compatible.sh
+#6. 修改了wifiwatch的log保存地址 | files: changelog/changelog.md,conf/global.env,conf/net.env,ops/legacy:/toolbox_menu_legacy.sh,scripts/backup_menu.sh,scripts/backup/backup.sh,scripts/backup/load_conf.sh,scripts/backup/open_last_snapshot.sh,scripts/misc/lyrics_import_obsidian.sh,scripts/net/wifi_watch.sh,scripts/rsync_backup_final.sh,scripts/toolbox_improved.sh,scripts/toolbox_super_compatible_no_cmd.sh,scripts/toolbox_super_compatible.sh
+#5. 修改了wifiwatch的log保存地址 | files: changelog/changelog.md,conf/global.env,conf/net.env,ops/legacy:/toolbox_menu_legacy.sh,scripts/backup_menu.sh,scripts/backup/backup.sh,scripts/backup/load_conf.sh,scripts/backup/open_last_snapshot.sh,scripts/misc/lyrics_import_obsidian.sh,scripts/net/wifi_watch.sh,scripts/rsync_backup_final.sh,scripts/toolbox_improved.sh,scripts/toolbox_super_compatible_no_cmd.sh,scripts/toolbox_super_compatible.sh
+#4. 修改了wifiwatch的log保存地址 | files: changelog/changelog.md,conf/global.env,conf/net.env,ops/legacy:/toolbox_menu_legacy.sh,scripts/backup_menu.sh,scripts/backup/backup.sh,scripts/backup/load_conf.sh,scripts/backup/open_last_snapshot.sh,scripts/misc/lyrics_import_obsidian.sh,scripts/net/wifi_watch.sh,scripts/rsync_backup_final.sh,scripts/toolbox_improved.sh,scripts/toolbox_super_compatible_no_cmd.sh,scripts/toolbox_super_compatible.sh
+#3. 修改了wifiwatch的log保存地址 | files: changelog/changelog.md,conf/global.env,conf/net.env,ops/legacy:/toolbox_menu_legacy.sh,scripts/backup_menu.sh,scripts/backup/backup.sh,scripts/backup/load_conf.sh,scripts/backup/open_last_snapshot.sh,scripts/misc/lyrics_import_obsidian.sh,scripts/net/wifi_watch.sh,scripts/rsync_backup_final.sh,scripts/toolbox_improved.sh,scripts/toolbox_super_compatible_no_cmd.sh,scripts/toolbox_super_compatible.sh
+#2. 修改了 log 的路径加载方式，统一到 toolbox/_out/Logs | files: changelog/changelog.md,conf/global.env,conf/net.env,ops/legacy:/toolbox_menu_legacy.sh,scripts/backup_menu.sh,scripts/backup/backup.sh,scripts/backup/load_conf.sh,scripts/backup/open_last_snapshot.sh,scripts/misc/lyrics_import_obsidian.sh,scripts/net/wifi_watch.sh,scripts/rsync_backup_final.sh,scripts/toolbox_improved.sh,scripts/toolbox_super_compatible_no_cmd.sh,scripts/toolbox_super_compatible.sh
+#1. 修改了 log 的路径加载方式，统一到 toolbox/_out/Logs | files: changelog/changelog.md,conf/global.env,conf/net.env,ops/legacy:/toolbox_menu_legacy.sh,scripts/backup_menu.sh,scripts/backup/backup.sh,scripts/backup/load_conf.sh,scripts/backup/open_last_snapshot.sh,scripts/misc/lyrics_import_obsidian.sh,scripts/net/wifi_watch.sh,scripts/rsync_backup_final.sh,scripts/toolbox_improved.sh,scripts/toolbox_super_compatible_no_cmd.sh,scripts/toolbox_super_compatible.sh

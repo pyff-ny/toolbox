@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 set -Eeuo pipefail
-TOOLBOX_VERSION="2026-01-27.22"
-#==============
-#18. 修改了open_last_snapshot.sh中环境变量加载方式，改为从global
+TOOLBOX_VERSION="2026-01-27.8"
+echo "[INFO] toolbox version: $TOOLBOX_VERSION"
+
 
 TOOLBOX_DIR="${TOOLBOX_DIR:-$HOME/toolbox}"
 SCRIPTS_DIR="${SCRIPTS_DIR:-$TOOLBOX_DIR/scripts}"
@@ -14,11 +14,6 @@ RULES_SH="$TOOLBOX_DIR/_lib/rules.sh"
 # shellcheck source=/dev/null
 source "$RULES_SH"
 
-TOOLBOX_VERSION="$TOOLBOX_DIR/_lib/version.sh"
-[[ -f "$TOOLBOX_VERSION" ]] || die "version file not found: $TOOLBOX_VERSION"
-# shellcheck source=/dev/null
-source "$TOOLBOX_VERSION"
-echo "[INFO] toolbox version: $TOOLBOX_VERSION"
 
 command -v fzf >/dev/null 2>&1 || { echo "[ERROR] fzf not found"; exit 1; }
 
@@ -62,81 +57,42 @@ list_cmds_in_dir() {
 }
 
 # ---------- Exec ----------
-#!/usr/bin/env bash
-
-# ===================================================================
-# run_cmd - 稳定版本（兼容性最强）
-# ===================================================================
-
 run_cmd() {
-  local rel="$1"
-  local fullpath="$2"
-  local filename="$3"
-  shift 3
+  local fullpath="$1"
+  local filename="$2"
+  shift 2
   local extra_args=("$@")
-  
-  # 调试输出（安全版本）
 
-  if [[ "${DEBUG:-0}" == "1" ]]; then
-    echo "[DEBUG] REL=$rel DIR=$fullpath FILE=$filename" >&2
-    echo "[DEBUG] ARGS=${extra_args[*]}" >&2
-  fi
-
-
-  # 显示运行信息
   echo
-  echo "[RUN] $rel/$fullpath/$filename"
-  
-  if [[ ${#extra_args[@]} -gt 0 ]]; then
-    echo "[ARGS] ${extra_args[*]}"
-  fi
-  
+  printf '[RUN] %s/%s %s\n' "$fullpath" "$filename" "${extra_args[*]:-}"
+  printf '[RUN] %s/%s argv=%q\n' "$fullpath" "$filename" "$*"
   echo "[INFO] Press Ctrl+C to stop and return to menu"
   echo
-  
-  # 在子 shell 中运行（隔离信号处理）
+
   (
-    # 捕获 Ctrl+C
     trap 'echo; echo "[INFO] Script interrupted. Returning to menu..."; exit 130' INT
-    
-    # 根据文件类型执行
+
     case "$filename" in
-      *.sh)
-        bash "$fullpath/$filename" "${extra_args[@]}"
-        ;;
-      *.py)
-        python3 "$fullpath/$filename" "${extra_args[@]}"
-        ;;
-      *)
-        "$fullpath/$filename" "${extra_args[@]}"
-        ;;
+      *.sh) bash "$fullpath/$filename" "${extra_args[@]}" ;;
+      *.py) python3 "$fullpath/$filename" "${extra_args[@]}" ;;
+      *)    "$fullpath/$filename" "${extra_args[@]}" ;;
     esac
   )
-  
-  # 获取退出码
+
   local exit_code=$?
-  
-  # 显示结果
   echo
-  case $exit_code in
-    0)
-      echo "[OK] Script completed successfully"
-      ;;
-    130)
-      echo "[INFO] Script stopped by user"
-      ;;
-    *)
-      echo "[WARN] Script exited with code: $exit_code"
-      ;;
-  esac
-  
+  if [[ $exit_code -eq 130 ]]; then
+    echo "[INFO] Script stopped by user"
+  elif [[ $exit_code -ne 0 ]]; then
+    echo "[WARN] Script exited with code: $exit_code"
+  else
+    echo "[OK] Script completed successfully"
+  fi
   echo
   echo "Press Enter to continue..."
   read -r
 }
 
-
-# ---------- Wrapper Management ----------
 cmd_to_name() {
   local f="$1"
   local category="${2:-}"
@@ -362,19 +318,20 @@ choose_one() {
 
 #menu_actions 变成“读能力表”的纯展示层
 menu_actions() {
-  local rel="${1:-}"
+  local rel="${1:-}"   # e.g. media/lyrics_auto_no_vad.sh
+  local file="${2:-}"  # e.g. lyrics_auto_no_vad.sh (当前可不用，但保留备用)
 
   {
-    # Run now / dry-run
-    if ! cap_has "$rel" "NEEDS_ARGS"; then
+    # 1) Direct run: 仅当“不需要参数”时开放
+    if ! is_needs_args_rel "$rel"; then
       echo "Run now"
-      if cap_has "$rel" "DRYRUN"; then
+      if supports_dryrun_rel "$rel"; then
         echo "Run with --dry-run"
       fi
     fi
 
-    # Run with prompts
-    if ! cap_has "$rel" "HIDE_PROMPTS"; then
+    # 2) Prompts run: 仅当“不属于直通隐藏 prompts”时开放
+    if ! hide_prompts_rel "$rel"; then
       echo "Run with prompts"
     fi
 
@@ -383,16 +340,19 @@ menu_actions() {
     echo "Open in editor"
     echo "Delete wrapper"
 
-    # Special actions: 也可以继续写 case rel
+    # 3) Special actions: 只对特定脚本显示
     case "$rel" in
-      media/lyrics_auto_no_vad.sh)   echo "Lyrics:Transcribe(whisper-cpp)" ;;
-      media/lyrics_import_obsidian.sh) echo "Lyrics:Import to Obsidian" ;;
+      media/lyrics_auto_no_vad.sh)
+        echo "Lyrics:Transcribe(whisper-cpp)"
+        ;;
+      media/lyrics_import_obsidian.sh)
+        echo "Lyrics:Import to Obsidian"
+        ;;
     esac
 
     echo "Back"
   } | choose_one "Action > "
 }
-
 
 
 
@@ -437,6 +397,7 @@ main() {
       
       #对比调试输出，确定路径是否一致
       #echo "[DBG] REL=$REL  DIR=$DIR  FILE=$FILE" >/dev/tty
+      
       ACT="$(menu_actions "$REL" "$FILE" || true)"
       trap '' INT
 
@@ -444,14 +405,14 @@ main() {
 
       case "$ACT" in
         "Run now")
-          run_cmd "$REL" "$DIR" "$FILE"
+          run_cmd "$DIR" "$FILE"
           ;;
         "Run with --dry-run")
-          run_cmd "$REL" "$DIR" "$FILE" "--dry-run"
+          run_cmd "$DIR" "$FILE" "--dry-run"
           ;;
         "Run with prompts")
           # 扁平化后：不再传 ROOT/SUB
-          run_with_prompts "$REL" "$DIR" "$FILE" "" ""
+          run_with_prompts "$DIR" "$FILE" "" ""
           ;;
         "Create wrapper")
           # 这里建议把 category 传 REL 的 dirname，避免重名

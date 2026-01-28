@@ -2,13 +2,13 @@
 set -euo pipefail
 
 die() { printf '[ERROR] %s\n' "$*" >&2; exit 1; }
+ENV_FILE="${ENV_FILE:-$HOME/toolbox/conf/global.env}"
+[[ -f "$ENV_FILE" ]] && source "$ENV_FILE" || die "Env file not found: $ENV_FILE"
 
-ROOT="${TOOLBOX_ROOT:-$HOME/toolbox}"
-LOG_DIR="${LOG_DIR:-$HOME/Logs}"
 LOCAL_INDEX="${LOCAL_INDEX:-$LOG_DIR/snapshot_index.tsv}"
 
 # 远端 open 需要用到（可从 ssh_sync.conf 继承）
-CONF_DIR="${CONF_DIR:-$ROOT/conf}"
+CONF_DIR="${CONF_DIR:-$TOOLBOX_DIR/conf}"
 CFG="${CFG:-$CONF_DIR/ssh_sync.conf}"
 
 # -------------------------

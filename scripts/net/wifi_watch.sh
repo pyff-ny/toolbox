@@ -78,10 +78,29 @@ if is_int "$HIGH_LAT_MS" && (( HIGH_LAT_MS < 1 )); then
 fi
 # -------------------------------
 
+# ---------- Setup ----------
+#1.加载配置文件
+#固定路径加载
+ENV_FILE="$HOME/toolbox/conf/net.env"
+if [[ -f "$ENV_FILE" ]]; then
+  echo "[INFO] Loading env file: $ENV_FILE"
+  source "$ENV_FILE"
+else
+  echo "[WARN] Env file not found: $ENV_FILE (proceeding with defaults)"
+  echo "[INFO] Using defaults for LOG_ROOT"
+fi
+#2.使用配置中的变量
+LOG_ROOT="${LOG_ROOT:-$LOG_DIR/WiFiWatch}"
+#或者直接使用
+#LOG_ROOT="$LOG_DIR/WiFiWatch"
+
+#3. 工具路径
 WDUTIL="/usr/bin/wdutil"
 PING="/sbin/ping"
-LOG_ROOT="${LOG_ROOT:-$HOME/Logs/WiFiWatch}"
+# 4.创建日志目录
+mkdir -p "$LOG_ROOT"
 
+# ---------------------------
 now_time() { date "+%H:%M:%S"; }
 today() { date "+%Y-%m-%d"; }
 
