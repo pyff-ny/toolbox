@@ -1,0 +1,4 @@
+#!/usr/bin/env bash
+# Auto-generated launcher for: $HOME/toolbox/scripts/system/bump_toolbox_version.sh
+SCRIPTS_DIR="${SCRIPTS_DIR:-$HOME/toolbox/scripts}"
+exec "$SCRIPTS_DIR/system/bump_toolbox_version.sh" "$@"
