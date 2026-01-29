@@ -1,0 +1,116 @@
+=== Toolbox Config Migration Audit ===
+ROOT: /Users/jiali/toolbox
+Timestamp: 2026-01-29 04:28:54
+--------------------------------------
+
+[MIXED] _lib/load_conf.sh
+  hits: 7
+  7:CONF_DIR="${TOOLBOX_ROOT}/conf"
+  24:  CONF_DIR="${CONF_DIR:-$TOOLBOX_ROOT/conf}"
+  30:  export TOOLBOX_ROOT SCRIPTS_DIR LOG_DIR CONF_DIR OPS_DIR SNAPSHOT_DIR
+  68:  local t1="${CONF_DIR}/${module}.env.example"
+  69:  local t2="${CONF_DIR}/${module}.example.env"
+  70:  local t3="${CONF_DIR}/${module}.env"   # 兼容你原本的命名；建议未来改成 example
+  2:# load_conf.sh - 统一配置加载器（模板可见 + 本机可跑 + 不会误同步）
+
+[LEGACY] _lib/summary.sh
+  hits: 6
+  41:SUMMARY_CONF_PATH=""
+  102:  SUMMARY_CONF_PATH=""
+  124:    conf_path) SUMMARY_CONF_PATH="$v" ;;
+  211:  j_conf="$(_json_escape "$SUMMARY_CONF_PATH")"
+  259:      [[ -n "$SUMMARY_CONF_PATH" ]] && echo "**Config**: $SUMMARY_CONF_PATH"
+  278:  [[ -n "$SUMMARY_CONF_PATH" ]] && echo "[INFO] Config: $SUMMARY_CONF_PATH"
+
+[LEGACY] _lib/version.sh
+  hits: 2
+  17:#7. 在conf/net.env中，新增LOG_DIR变量，统一日志目录到toolbox/_out/Logs。
+  20:#4. 在conf/global.env中，新增LOG_DIR变量，统一日志目录到toolbox/_out/Logs。
+
+[MIXED] bin/scan_conf_migration.sh
+  hits: 15
+  21:  'ENV_FILE'
+  29:  'export[[:space:]]+ENV_FILE'
+  140:   - ENV_FILE / env_file / CONF_PATH hand-built paths
+  22:  'env_file'
+  140:   - ENV_FILE / env_file / CONF_PATH hand-built paths
+  23:  'CONF_PATH'
+  140:   - ENV_FILE / env_file / CONF_PATH hand-built paths
+  145:   CONF_PATH="${TOOLBOX_CONF_USED:-}"
+  24:  'CONF_DIR'
+  141:   - direct "source conf/*.env"
+  141:   - direct "source conf/*.env"
+  141:   - direct "source conf/*.env"
+  143:   source "$TOOLBOX_DIR/scripts/_lib/load_conf.sh"
+  143:   source "$TOOLBOX_DIR/scripts/_lib/load_conf.sh"
+  143:   source "$TOOLBOX_DIR/scripts/_lib/load_conf.sh"
+
+[MIXED] scripts/_lib/load_conf.sh
+  hits: 7
+  7:CONF_DIR="${TOOLBOX_ROOT}/conf"
+  24:  CONF_DIR="${CONF_DIR:-$TOOLBOX_ROOT/conf}"
+  30:  export TOOLBOX_ROOT SCRIPTS_DIR LOG_DIR CONF_DIR OPS_DIR SNAPSHOT_DIR
+  68:  local t1="${CONF_DIR}/${module}.env.example"
+  69:  local t2="${CONF_DIR}/${module}.example.env"
+  70:  local t3="${CONF_DIR}/${module}.env"   # 兼容你原本的命名；建议未来改成 example
+  2:# load_conf.sh - 统一配置加载器（模板可见 + 本机可跑 + 不会误同步）
+
+[LEGACY] scripts/backup/backup_menu.sh
+  hits: 4
+  63:      source "$HOME/toolbox/conf/backup.env"
+  63:      source "$HOME/toolbox/conf/backup.env"
+  63:      source "$HOME/toolbox/conf/backup.env"
+  63:      source "$HOME/toolbox/conf/backup.env"
+
+[LEGACY] scripts/backup/open_last_snapshot.sh
+  hits: 4
+  5:ENV_FILE="${ENV_FILE:-$HOME/toolbox/conf/global.env}"
+  6:[[ -f "$ENV_FILE" ]] && source "$ENV_FILE" || die "Env file not found: $ENV_FILE"
+  11:CONF_DIR="${CONF_DIR:-$TOOLBOX_DIR/conf}"
+  12:CFG="${CFG:-$CONF_DIR/ssh_sync.conf}"
+
+[MIXED] scripts/backup/rsync_backup_final.sh
+  hits: 9
+  22:CONF_PATH="${TOOLBOX_CONF_USED:-}"
+  23:export CONF_PATH
+  52:  echo "Please check your SRC_DIR setting in ${CONF_PATH:-<no config>}"
+  319:  if [[ -n "${CONF_PATH:-}" ]]; then
+  320:     echo "[INFO] Config: $CONF_PATH"
+  345:    echo "**Config**: ${CONF_PATH:-N/A}"
+  19:source "$TOOLBOX_DIR/scripts/_lib/load_conf.sh"
+  19:source "$TOOLBOX_DIR/scripts/_lib/load_conf.sh"
+  19:source "$TOOLBOX_DIR/scripts/_lib/load_conf.sh"
+
+[LEGACY] scripts/backup/sync_history.sh
+  hits: 2
+  7:ENV_FILE="${ENV_FILE:-$HOME/toolbox/conf/global.env}"
+  8:[[ -f "$ENV_FILE" ]] && source "$ENV_FILE" || { echo "[ERROR] Env file not found: $ENV_FILE" >&2; exit 1; } 
+
+[LEGACY] scripts/backup/sync_reports.sh
+  hits: 5
+  9:ENV_FILE="${ENV_FILE:-$HOME/toolbox/conf/global.env}"
+  10:[[ -f "$ENV_FILE" ]] && source "$ENV_FILE" || die "Env file not found: $ENV_FILE" 
+  13:CONF_DIR="${CONF_DIR:-$ROOT/conf}"
+  14:CFG="${CFG:-$CONF_DIR/ssh_sync.conf}"
+  16:mkdir -p "$CONF_DIR" "$LOG_DIR"
+
+[LEGACY] scripts/doctor/toolbox_doctor.sh
+  hits: 2
+  9:CONF_DIR="${CONF_DIR:-$ROOT/conf}"
+  10:CFG="${CFG:-$CONF_DIR/ssh_sync.conf}"
+
+[LEGACY] scripts/net/wifi_watch.sh
+  hits: 5
+  84:ENV_FILE="$HOME/toolbox/conf/net.env"
+  85:if [[ -f "$ENV_FILE" ]]; then
+  86:  echo "[INFO] Loading env file: $ENV_FILE"
+  87:  source "$ENV_FILE"
+  89:  echo "[WARN] Env file not found: $ENV_FILE (proceeding with defaults)"
+
+[LEGACY] scripts/system/screenshot_monitor_advanced.sh
+  hits: 4
+  12:if [[ -f "$TOOLBOX_ROOT/_lib/load_conf.sh" ]]; then
+  13:  source "$TOOLBOX_ROOT/_lib/load_conf.sh"
+  12:if [[ -f "$TOOLBOX_ROOT/_lib/load_conf.sh" ]]; then
+  13:  source "$TOOLBOX_ROOT/_lib/load_conf.sh"
+

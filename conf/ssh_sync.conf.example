@@ -1,0 +1,21 @@
+# conf/ssh_sync.env.example
+# Copy to: ops/ssh_sync.env (NOT tracked by git)
+
+# ===== Remote SSH target =====
+DEST_HOST="192.168.1.1"     # e.g. iMac LAN IP
+DEST_USER="your_username"
+
+# ===== Remote roots =====
+REMOTE_ROOT="/Volumes/iMac_HDD_Backup/Backup"   # base dir on remote
+
+# ===== Remote paths (relative to REMOTE_ROOT) =====
+REMOTE_REPORTS_DIR="REMOTE_REPORTS"
+REMOTE_LOGS_DIR="REMOTE_LOGS"
+SNAP_ROOT_REMOTE="_snapshots"
+
+# ===== Local sources =====
+LOCAL_REPORTS_DIR="$HOME/LOCAL/IT-Reports"
+LOCAL_LOGS_DIR="$HOME/LOCAL/Logs"
+
+# Local index (written by sync job)
+LOCAL_INDEX="$HOME/LOCAL/snapshot_index.tsv"

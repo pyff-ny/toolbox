@@ -4,9 +4,12 @@ set -euo pipefail
 
 # default: show last 10 records
 N="${1:-10}"
-ENV_FILE="${ENV_FILE:-$HOME/toolbox/conf/global.env}"
-[[ -f "$ENV_FILE" ]] && source "$ENV_FILE" || { echo "[ERROR] Env file not found: $ENV_FILE" >&2; exit 1; } 
 
+TOOLBOX_DIR="${TOOLBOX_DIR:-$HOME/toolbox}"
+SCRIPTS_DIR="${SCRIPTS_DIR:-$TOOLBOX_DIR/scripts}"
+# shellcheck source=/dev/null
+source "$SCRIPTS_DIR/_lib/load_conf.sh"
+LOG_DIR="${LOG_DIR:-$TOOLBOX_DIR/_out/Logs}"
 
 INDEX="${INDEX:-$LOG_DIR/snapshot_index.tsv}"
 

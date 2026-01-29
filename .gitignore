@@ -1,40 +1,43 @@
-# macOS
-.DS_Store
-
-# local state
-changelog/.last_slug
-_lib/tags.conf
+# =========================
+# Runtime (machine-specific)
+# =========================
+# ops/ contains local-only tasks, absolute paths, device identifiers, personal pipelines.
+# It must never be pushed to remote.
 ops/
 
+# =========================
+# Real configs (DO NOT TRACK)
+# =========================
+# Track only conf/*.example.*, keep real configs in ops/ or user home.
+**/*.conf
+# 白名单Exclude example/template configs from ignore:
+!conf/*.example.conf
+!conf/*.template.conf
 
-# raw assets should never be tracked
-changelog/_assets_raw/
+# If you use env files:
+**/.env
+!conf/.env.example
 
-# Editors / IDE
-.vscode/
-.idea/
-
-_out/
-
-# Logs
-*.log
+# =========================
+# Artifacts / outputs
+# =========================
 logs/
-**/*.log
-
-# Runtime outputs (adjust to your real dirs)
-ops/**/novel_out/
-ops/**/out_book/
-out_book/
-novel_out/
-
-# Temp / cache
+reports/
 tmp/
 .cache/
-**/__pycache__/
+
+# =========================
+# OS / editor noise
+# =========================
+.DS_Store
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# =========================
+# Language / tooling caches (optional)
+# =========================
+node_modules/
+__pycache__/
 *.pyc
-
-# Environment / secrets (if any)
-.env
-.env.*
-
-assets_raw/

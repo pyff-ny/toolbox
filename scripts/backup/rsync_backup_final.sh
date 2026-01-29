@@ -11,43 +11,34 @@ trap on_sigint INT
 
 echo "[DEBUG] argv: $*"
 
-# 加载配置
-# ===== Load config =====
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
-# 检查 load_conf.sh 是否存在
-if [[ -f "$SCRIPT_DIR/load_conf.sh" ]]; then
-  source "$SCRIPT_DIR/load_conf.sh"
-  load_module_conf "backup"
-  echo "[INFO] Loaded backup config from load_conf.sh"
-elif [[ -f "$HOME/toolbox/_lib/load_conf.sh" ]]; then
-  source "$HOME/toolbox/_lib/load_conf.sh"
-  load_module_conf "backup"
-  echo "[INFO] Loaded backup config from _lib/load_conf.sh"
-fi
+# ===== Load config =====
+
+TOOLBOX_ROOT="${TOOLBOX_ROOT:-$HOME/toolbox}"
+SCRIPT_DIR="${SCRIPT_DIR:-$TOOLBOX_ROOT/scripts}"
+source "$SCRIPT_DIR/_lib/load_conf.sh"
+
+load_module_conf "backup" "SRC_DIR" "DST_DIR" "DEST_USER" "DEST_HOST" "REMOTE_DEST_PATH" || exit $?
+CONF_PATH="${TOOLBOX_CONF_USED:-}"
+export CONF_PATH
+
+
+# 这里开始使用 $SRC_DIR / $DST_DIR
+echo "SRC=$SRC_DIR"
+echo "DST=$DST_DIR"
+
 
 LOG_DIR="${LOG_DIR:-$HOME/toolbox/_out/Logs}"
 mkdir -p "$LOG_DIR"
-
-# 直接加载 backup.env
-ENV_FILE="${ENV_FILE:-$HOME/toolbox/conf/backup.env}"
-
-if [[ -f "$ENV_FILE" ]]; then
-  echo "[INFO] Loading config: $ENV_FILE"
-  source "$ENV_FILE"
-else
-  echo "[ERROR] Missing config: $ENV_FILE"
-  echo "Create it from conf/backup.env.example"
-  exit 2
-fi
 
 # =========================
 # 强校验 （避免空配置误跑）
 # =========================
 : "${DEST_USER:?DEST_USER is required}"
 : "${DEST_HOST:?DEST_HOST is required}"
+: "${DST_DIR:?DST_DIR is required}"
 : "${REMOTE_DEST_PATH:?REMOTE_DEST_PATH is required}"
-: "${SRC:?SRC is required}"
+: "${SRC_DIR:?SRC_DIR is required}"
 
 # 防止像 " " 这种只包含空格
 if [[ -z "${DEST_USER// /}" || -z "${DEST_HOST// /}" ]]; then
@@ -56,9 +47,10 @@ if [[ -z "${DEST_USER// /}" || -z "${DEST_HOST// /}" ]]; then
 fi
 
 # 检查源目录是否存在
-if [[ ! -d "$SRC" ]]; then
-  echo "[ERROR] Source directory does not exist: $SRC"
-  echo "Please check your SRC setting in $ENV_FILE"
+if [[ ! -d "$SRC_DIR" ]]; then
+  echo "[ERROR] Source directory does not exist: $SRC_DIR"
+  echo "Please check your SRC_DIR setting in ${CONF_PATH:-<no config>}"
+
   exit 2
 fi
 
@@ -195,7 +187,7 @@ extract_after_colon_bytes() {
   echo "Local host: $LOCAL_HOST"
   echo "[INFO] Log: $LOG_ABS"
   echo "Rsync: $RSYNC_BIN ($($RSYNC_BIN --version | head -n 1))"
-  echo "SRC : $SRC"
+  echo "SRC : $SRC_DIR"
   echo "DEST: ${DEST_USER}@${DEST_HOST}:${REMOTE_DEST_PATH}"
   echo "DRY_RUN: $DRY_RUN"
   echo "=============================="
@@ -212,12 +204,11 @@ fi
 # 2) 远端信息
 REMOTE_WHOAMI="$(ssh "${DEST_USER}@${DEST_HOST}" "whoami" 2>/dev/null || echo '(unknown)')"
 REMOTE_LHN="$(ssh "${DEST_USER}@${DEST_HOST}" "scutil --get LocalHostName 2>/dev/null || hostname" 2>/dev/null || echo '(unknown)')"
-echo "[OK] ssh reachable. remote whoami=$REMOTE_WHOAMI, remote LocalHostName=$REMOTE_LHN" | tee -a "$LOG"
+echo "[OK] ssh reachable. remote whoami=$REMOTE_WHOAMI, remote LocalHostName=$REMOTE_LHN" | tee -a "$LOG_ABS"
 
 # 远端目标目录
 REMOTE_USER_DIR="${REMOTE_DEST_PATH}/Users/${LOCAL_USER}"
-ssh "${DEST_USER}@${DEST_HOST}" "mkdir -p '${REMOTE_USER_DIR}'" 2>&1 | tee -a "$LOG" >/dev/null
-
+ssh "${DEST_USER}@${DEST_HOST}" "mkdir -p '${REMOTE_USER_DIR}'" 2>&1 | tee -a "$LOG_ABS" >/dev/null
 # =========================
 # Build rsync args
 # =========================
@@ -262,7 +253,7 @@ echo "" | tee -a "$LOG"
 # Run rsync
 # =========================
 set +e
-caffeinate -dimsu "$RSYNC_BIN" "${ARGS[@]}" "$SRC/" "$REMOTE_TARGET" 2>&1 | tee -a "$LOG"
+caffeinate -dimsu "$RSYNC_BIN" "${ARGS[@]}" "$SRC_DIR/" "$REMOTE_TARGET" 2>&1 | tee -a "$LOG"
 RSYNC_CODE="${PIPESTATUS[0]}"
 set -e
 
@@ -325,7 +316,10 @@ fi
   echo "===== RSYNC BACKUP END ====="
   echo "Time: $(date '+%Y-%m-%d %H:%M:%S')"
   echo "[INFO] Script: $(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/$(basename "${BASH_SOURCE[0]}")"
-  echo "[INFO] Config: ${ENV_FILE:-N/A}"
+  if [[ -n "${CONF_PATH:-}" ]]; then
+     echo "[INFO] Config: $CONF_PATH"
+  fi
+
   echo "[INFO] Log:$LOG_ABS"
 
   # --- Obsidian sink (append) ---
@@ -348,7 +342,7 @@ fi
     [[ -n "$one_line" ]] && echo && echo "- ${one_line}"
     echo
     echo "**Script**: ${SCRIPT_PATH:-${BASH_SOURCE[0]}}"
-    echo "**Config**: ${CONF_PATH:-$ENV_FILE}"
+    echo "**Config**: ${CONF_PATH:-N/A}"
     echo "**Log**: ${LOG_PATH:-$LOG_ABS}"
     echo
 
@@ -383,13 +377,12 @@ fi
   "log": "$LOG_ABS",
   "timestamp": "$(date '+%Y-%m-%dT%H:%M:%S')",
   "remote": "$DEST_USER@$DEST_HOST",
-  "source": "$SRC",
+  "source": "$SRC_DIR",
   "destination": "$REMOTE_USER_DIR"
 }
 EOF
 )"
   SCRIPT_PATH="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/$(basename "${BASH_SOURCE[0]}")"
-  CONF_PATH="$ENV_FILE"
   LOG_PATH="$LOG_ABS"
 
   obsidian_append_summary

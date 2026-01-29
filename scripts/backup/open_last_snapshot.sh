@@ -2,21 +2,26 @@
 set -euo pipefail
 
 die() { printf '[ERROR] %s\n' "$*" >&2; exit 1; }
-ENV_FILE="${ENV_FILE:-$HOME/toolbox/conf/global.env}"
-[[ -f "$ENV_FILE" ]] && source "$ENV_FILE" || die "Env file not found: $ENV_FILE"
 
-LOCAL_INDEX="${LOCAL_INDEX:-$LOG_DIR/snapshot_index.tsv}"
+# ===== Load config =====
+TOOLBOX_DIR="${TOOLBOX_DIR:-$HOME/toolbox}"
+# shellcheck source=/dev/null
+source "$TOOLBOX_DIR/scripts/_lib/load_conf.sh"
+# shellcheck source=/dev/null
+source "$TOOLBOX_DIR/scripts/_lib/log.sh"
 
-# 远端 open 需要用到（可从 ssh_sync.conf 继承）
-CONF_DIR="${CONF_DIR:-$TOOLBOX_DIR/conf}"
-CFG="${CFG:-$CONF_DIR/ssh_sync.conf}"
+load_module_conf "ssh_sync" \
+  "DEST_HOST" "DEST_USER" \
+  "REMOTE_ROOT" \
+  "REMOTE_REPORTS_DIR" "REMOTE_LOGS_DIR" \
+  "LOCAL_INDEX" || exit $?
+
+CONF_PATH="${TOOLBOX_CONF_USED:-}"
 
 # -------------------------
 # 基础检查
 # -------------------------
 [[ -f "$LOCAL_INDEX" ]] || die "snapshot index not found: $LOCAL_INDEX"
-
-# 读取最后一条记录
 LAST_LINE="$(tail -n 1 "$LOCAL_INDEX" 2>/dev/null || true)"
 [[ -n "$LAST_LINE" ]] || die "snapshot index empty: $LOCAL_INDEX"
 
@@ -33,100 +38,93 @@ LOG_FILE="$(getv LOG)"
 
 DRY_RUN="${DRY_RUN:-unknown}"
 
+# -------------------------
+# helpers
+# -------------------------
+SSH_OPTS=(-o BatchMode=yes -o ConnectTimeout=5)
+
+open_local_file() {
+  local label="$1" p="${2:-}"
+  [[ -z "$p" ]] && return 0
+  if [[ -f "$p" ]]; then
+    open "$p" >/dev/null 2>&1 || true
+    log_ok "LOCAL" "Opened ${label}: $p"
+  else
+    log_warn "LOCAL" "${label} not found: $p"
+  fi
+}
+
+# return 0 if opened locally, 1 if missing locally (may need remote)
+open_local_dir() {
+  local label="$1" p="${2:-}"
+  [[ -z "$p" ]] && return 0
+  if [[ -d "$p" ]]; then
+    open "$p" >/dev/null 2>&1 || true
+    log_ok "LOCAL" "Opened ${label}: $p"
+    return 0
+  fi
+  log_info "LOCAL" "${label} missing locally (will try remote if needed): $p"
+  return 1
+}
+
+mk_target() {
+  local host="${1:?host}" user="${2:-}"
+  [[ -n "$user" && "$host" != *"@"* ]] && printf '%s@%s' "$user" "$host" || printf '%s' "$host"
+}
+
+remote_open_dir() {
+  local target="${1:?target}" label="${2:?label}" path="${3:?path}"
+  ssh "${SSH_OPTS[@]}" "$target" "open \"${path}\" >/dev/null 2>&1 || true" >/dev/null 2>&1 || true
+  log_ok "NETWORK" "Requested iMac open ${label}: ${path}"
+}
+
+# -------------------------
+# LOCAL section
+# -------------------------
 echo "== Open Last Snapshot =="
-echo "RUN_ID:   ${RUN_ID:-N/A}"
-echo "DRY_RUN:  ${DRY_RUN}"
-echo "REPORTS:  ${REPORTS:-N/A}"
-echo "LOGS:     ${LOGS:-N/A}"
-echo "LOG FILE: ${LOG_FILE:-N/A}"
+log_info "LOCAL" "RUN_ID:  ${RUN_ID:-N/A}"
+log_info "LOCAL" "DRY_RUN: ${DRY_RUN:-unknown}"
+[[ -n "${CONF_PATH:-}" && -f "$CONF_PATH" ]] && log_info "META" "Config: $CONF_PATH"
+
+open_local_file "Log" "$LOG_FILE"
+
+if [[ "$DRY_RUN" == "true" ]]; then
+  log_ok "LOCAL" "DONE (DRY_RUN=true)"
+  exit 0
+fi
+
+need_remote=0
+open_local_dir "Reports" "${REPORTS:-}" || need_remote=1
+open_local_dir "Logs"    "${LOGS:-}"    || need_remote=1
+
+log_ok "LOCAL" "DONE"
 echo
 
-# -------------------------
-# DRY_RUN = true → 不存在快照目录，不做 ssh open
-# -------------------------
-if [[ "$DRY_RUN" == "true" ]]; then
-  echo "[INFO] This run was DRY_RUN=true, so no snapshot directory was created."
-  echo "[INFO] Skip opening iMac snapshot dirs."
-
-  if [[ -n "${LOG_FILE:-}" && -f "$LOG_FILE" ]]; then
-    open "$LOG_FILE" >/dev/null 2>&1 || true
-    echo "[OK] Opened local log: $LOG_FILE"
-  else
-    echo "[WARN] Local log not found: ${LOG_FILE:-<empty>}"
-  fi
-
+if [[ "$need_remote" -eq 0 ]]; then
+  log_info "NETWORK" "Local snapshot dirs exist; skip SSH open."
+  log_ok "REMOTE" "DONE"
   exit 0
 fi
 
 # -------------------------
-# REAL RUN：打开本地 log + 本地快照路径（如果存在）
+# NETWORK section
 # -------------------------
-if [[ -n "${LOG_FILE:-}" && -f "$LOG_FILE" ]]; then
-  open "$LOG_FILE" >/dev/null 2>&1 || true
-  echo "[OK] Opened local log: $LOG_FILE"
-else
-  echo "[WARN] Local log not found: ${LOG_FILE:-<empty>}"
-fi
+: "${DEST_HOST:?DEST_HOST is required}"
+TARGET="$(mk_target "$DEST_HOST" "${DEST_USER:-}")"
 
-if [[ -n "${REPORTS:-}" && -d "$REPORTS" ]]; then
-  open "$REPORTS" >/dev/null 2>&1 || true
-  echo "[OK] Opened snapshot Reports: $REPORTS"
-else
-  echo "[WARN] Reports dir missing locally: ${REPORTS:-<empty>}"
-fi
-
-if [[ -n "${LOGS:-}" && -d "$LOGS" ]]; then
-  open "$LOGS" >/dev/null 2>&1 || true
-  echo "[OK] Opened snapshot Logs: $LOGS"
-else
-  echo "[WARN] Logs dir missing locally: ${LOGS:-<empty>}"
-fi
-
-# -------------------------
-# 可选：ssh 打开 iMac 上的快照目录
-#   - 仅当本地目录缺失时才尝试 ssh open（避免重复弹窗）
-# -------------------------
-NEED_REMOTE_OPEN=0
-[[ -n "${REPORTS:-}" && ! -d "$REPORTS" ]] && NEED_REMOTE_OPEN=1
-[[ -n "${LOGS:-}"    && ! -d "$LOGS"    ]] && NEED_REMOTE_OPEN=1
-
-if [[ "$NEED_REMOTE_OPEN" -eq 0 ]]; then
-  echo "[INFO] Snapshot dirs exist locally; no need to SSH open."
-  echo "DONE"
+log_info "NETWORK" "Connecting to iMac via SSH (timeout=5s)..."
+if ! ssh "${SSH_OPTS[@]}" "$TARGET" "echo ok" >/dev/null 2>&1; then
+  log_warn "NETWORK" "SSH preflight failed; skip remote open."
+  log_ok "REMOTE" "DONE"
   exit 0
 fi
 
-# 从配置里拿 SSH_HOST/SSH_USER（如果配置存在）
-if [[ -f "$CFG" ]]; then
-  # shellcheck disable=SC1090
-  source "$CFG"
-fi
+REMOTE_REPORTS_ABS="${REMOTE_ROOT%/}/${REMOTE_REPORTS_DIR#/}"
+REMOTE_LOGS_ABS="${REMOTE_ROOT%/}/${REMOTE_LOGS_DIR#/}"
 
-: "${SSH_HOST:?SSH_HOST is required in $CFG to SSH open remote snapshot dirs}"
+remote_open_dir "$TARGET" "Reports" "$REMOTE_REPORTS_ABS"
+remote_open_dir "$TARGET" "Logs"    "$REMOTE_LOGS_ABS"
 
-TARGET="$SSH_HOST"
-if [[ -n "${SSH_USER:-}" && "$SSH_HOST" != *"@"* ]]; then
-  TARGET="${SSH_USER}@${SSH_HOST}"
-fi
-
-# ssh 预检
-if ! ssh -o BatchMode=yes -o ConnectTimeout=5 "$TARGET" "echo ok" >/dev/null 2>&1; then
-  echo "[WARN] SSH preflight failed. Skip remote open."
-  echo "Tip: run once manually: ssh $TARGET"
-  echo "DONE"
-  exit 0
-fi
-
-# 真正 remote open：在 iMac 上打开 Finder 指定目录
-# (macOS 的 open 命令在远端执行)
-if [[ -n "${REPORTS:-}" ]]; then
-  ssh "$TARGET" "open \"$REPORTS\" >/dev/null 2>&1 || true" || true
-  echo "[OK] Requested iMac open Reports: $REPORTS"
-fi
-
-if [[ -n "${LOGS:-}" ]]; then
-  ssh "$TARGET" "open \"$LOGS\" >/dev/null 2>&1 || true" || true
-  echo "[OK] Requested iMac open Logs: $LOGS"
-fi
-
-echo "DONE"
+log_ok "REMOTE" "DONE"
+echo
+exit 0

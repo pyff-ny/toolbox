@@ -4,7 +4,6 @@
 > 原则：不依赖操作者记忆；所有高风险点必须由系统强制减速。
 
 ---
-
 ## 0. 核心定义
 
 **Toolbox** = 一个命令/脚本编排器（orchestrator），负责：
@@ -173,3 +172,138 @@ Wrapper 的职责：
 - 不用“记住不要点 Run”替代隐藏错误入口
 - 不把业务日志塞回 Toolbox 主程序
 - 不为省事硬编码用户路径
+
+下面给你一段**可直接贴进 `ARCHITECTURE.md`** 的「目录分区原则」章节（偏工程规范写法，长期可维护）。
+
+---
+
+## Directory Partitioning Principles
+
+### Goal
+
+This repo separates **source-of-truth engineering assets** from **machine-specific runtime content** to prevent accidental syncing of local-only materials (paths, devices, logs, secrets), while keeping the project reproducible and reviewable.
+
+### The Four-State Model
+
+#### 1) Engineering (Source of Truth)
+
+**What it is:** reusable code, libraries, wrappers, docs that should be cloneable, reviewable, and portable.
+**Policy:** always tracked by Git.
+
+**Typical contents**
+
+* `bin/` — entry wrappers / CLI commands
+* `_lib/` — shared shell libs, helpers, rules
+* `scripts/` — reusable scripts
+* `docs/` — documentation
+* `changelog/` — version notes
+* `conf/` — **templates/examples only** (see Config state)
+
+#### 2) Runtime (Machine-Specific Ops)
+
+**What it is:** content that is meaningful only on one machine (mount points, local paths, device names, local workflows).
+**Policy:** never tracked by Git.
+
+**Typical contents**
+
+* `ops/` — local operations, local-only automation
+
+  * backup jobs (rsync targets, mount paths)
+  * disk health checks bound to specific disks
+  * personal pipelines / ad-hoc scripts tied to local layout
+
+**Rule of thumb:** If another machine cannot run it without editing absolute paths or device identifiers, it belongs in `ops/`.
+
+#### 3) Config (Boundary Layer)
+
+**What it is:** configuration files required for runtime, but values differ across machines.
+**Policy:** track only **examples/templates**; keep real configs local.
+
+**Layout**
+
+* `conf/*.example.conf` — tracked (portable defaults + documentation)
+* `ops/*.conf` — local (real values, machine-specific)
+
+**Why:** prevents leaking sensitive paths/identifiers while keeping configuration discoverable and documented.
+
+#### 4) Artifacts (Outputs)
+
+**What it is:** generated outputs, logs, reports, caches.
+**Policy:** never tracked by Git.
+
+**Typical contents**
+
+* `logs/`, `reports/`, `tmp/`, `.cache/`
+
+---
+
+## Canonical Layout
+
+```
+toolbox/
+├── bin/                 # Engineering
+├── _lib/                # Engineering
+├── scripts/             # Engineering
+├── docs/                # Engineering
+├── changelog/           # Engineering
+├── conf/                # Config templates (tracked)
+│   └── *.example.conf
+├── ops/                 # Runtime + real configs (NOT tracked)
+│   ├── ...local tasks...
+│   └── *.conf
+├── logs/                # Artifacts (NOT tracked)
+├── reports/             # Artifacts (NOT tracked)
+├── .gitignore
+├── ARCHITECTURE.md
+└── README.md
+```
+
+---
+
+## Git Rules
+
+Rule A：conf/ 只允许 example / template
+conf/ 是“文档化的默认配置”，不是“真实配置”。
+允许：
+conf/backup.example.conf
+conf/disk_health.example.conf
+conf/*.template.env
+禁止（必须放 ops/ 或系统 secret 管理）：
+conf/backup.conf
+conf/*.key / conf/*.pem
+任何含真实路径、账号、token 的文件
+
+Rule B：legacy/ 必须标注“冻结策略”
+legacy/ 通常会变成“垃圾场”，建议加一个轻量规矩：
+legacy/ 允许进 Git（因为它仍是工程历史）
+但默认：不再接受功能演进，只接受：
+修复致命 bug（如果仍被依赖）
+文档补充 / 迁移说明
+每个 legacy 子项目建议有 README.md 写明：
+“为什么进入 legacy”
+“替代路径在哪里”（指向 scripts/ 新实现或 docs）
+
+### Must be tracked
+
+* `bin/`, `_lib/`, `scripts/`, `docs/`, `changelog/`
+* `conf/*.example.conf`
+* top-level project docs (`README.md`, `ARCHITECTURE.md`)
+
+### Must NOT be tracked
+
+* `ops/` (runtime + real configs)
+* artifacts: `logs/`, `reports/`, `tmp/`, `.cache/`
+* OS/editor noise (`.DS_Store`, `.vscode/`, etc.)
+
+---
+
+## Operational Guardrail
+
+Before adding a new directory/file, ask:
+
+> “If someone clones this repo on a clean machine, does this item remain meaningful without editing machine-specific paths or secrets?”
+
+* **Yes** → Engineering/Config template → track in Git
+* **No** → Runtime/Artifacts → keep in `ops/` or outputs and ignore
+
+---
