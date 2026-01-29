@@ -600,3 +600,42 @@ grep -R "toolbox/scripts" "$HOME/toolbox/bin"
 
 **F. 预防（Prevention）**
 - 
+
+## T20 | bump_toolbox_versiochangelog.md文件写空
+#git
+
+**Created**: 2026-01-29 17:42
+
+**A. 触发（Friction）**
+- 打开changelog.md文件后，文件是空，没有内容，被删除了
+
+**B. 证据（Evidence）**
+```bash
+# paste commands + outputs
+```
+
+**C. 判定（Diagnosis）**
+- bump_toolbox_version.sh 里面的 ` mv "$temp" "$CHANGELOG_FILE" `前面没做防护，导致直接写空了旧有的文件
+
+**D. 修复（Fix）**
+```bash
+# paste fix commands
+```
+```
+# 写入前：如果目标文件原本非空，禁止写成空
+# Guard 1: tmp must contain the entry
+grep -qF "$ENTRY" "$tmp" || die "Refuse to write: entry not found in tmp (bug)."
+
+# Guard 2: refuse to clobber a non-empty changelog into empty
+if [[ -s "$CHANGELOG_FILE" && ! -s "$tmp" ]]; then
+  die "Refuse to overwrite non-empty changelog with empty content."
+fi
+```
+
+**E. 回归测试（Verify）**
+```bash
+# how to confirm it's resolved
+```
+
+**F. 预防（Prevention）**
+- 

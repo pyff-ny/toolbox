@@ -179,6 +179,17 @@ if [[ $FORCE_PREPEND -eq 1 ]]; then
 
 fi
 
+# Guard 1: tmp must contain the entry
+grep -qF "$ENTRY" "$tmp" || die "Refuse to write: entry not found in tmp (bug)."
+
+# Guard 2: refuse to clobber a non-empty changelog into empty
+if [[ -s "$CHANGELOG_FILE" && ! -s "$tmp" ]]; then
+  die "Refuse to overwrite non-empty changelog with empty content."
+fi
+
+mkdir -p "$(dirname "$CHANGELOG_FILE")"
+[[ -f "$CHANGELOG_FILE" ]] || echo "[WARN] changelog file not found; will create: $CHANGELOG_FILE"
+
 mv "$tmp" "$CHANGELOG_FILE"
 
 # -------------------------
@@ -224,6 +235,7 @@ echo "[WARN] Changelog opened. Press ESC to dismiss any editor overlay before sa
 open_changelog "$CHANGELOG_FILE"
 
 echo "[OK] NEW_VERSION=${NEW_VERSION}"
+echo "[INFO] CHANGELOG_FILE=$CHANGELOG_FILE"
 echo "[OK] Changelog updated: ${CHANGELOG_FILE}"
 echo "[OK] Entry: ${ENTRY}"
 if [[ $NO_VERSION_FILES -eq 1 ]]; then
