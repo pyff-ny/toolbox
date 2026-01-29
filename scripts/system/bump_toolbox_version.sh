@@ -19,7 +19,6 @@ VERSION_FILES_DEFAULT=(
 
 # Behavior toggles
 INCLUDE_GIT_FILES_DEFAULT=1   # 1=append changed files list if git repo exists
-ANCHOR_REGEX_DEFAULT='^TOOLBOX_VERSION='  # insert changelog after first match, else prepend at top
 
 usage() {
   cat <<'EOF'
@@ -31,7 +30,6 @@ Options:
   -f, --file <path>          A file to update TOOLBOX_VERSION=... in (repeatable)
   --no-version-files         Do not edit any files; only write changelog + print version
   --no-git-files             Do not append git changed files list
-  --anchor <regex>           Insert changelog entry after first line matching regex (default: ^TOOLBOX_VERSION=)
   --prepend                  Always prepend entry at top (ignore anchor)
   -h, --help                 Show help
 
@@ -48,7 +46,6 @@ die(){ echo "[ERROR] $*" >&2; exit 1; }
 # Parse args
 # -------------------------
 INCLUDE_GIT_FILES="$INCLUDE_GIT_FILES_DEFAULT"
-ANCHOR_REGEX="$ANCHOR_REGEX_DEFAULT"
 FORCE_PREPEND=0
 
 VERSION_FILES=()
@@ -68,9 +65,6 @@ while [[ $# -gt 0 ]]; do
       NO_VERSION_FILES=1; shift;;
     --no-git-files)
       INCLUDE_GIT_FILES=0; shift;;
-    --anchor)
-      [[ $# -ge 2 ]] || die "Missing value for $1"
-      ANCHOR_REGEX="$2"; shift 2;;
     --prepend)
       FORCE_PREPEND=1; shift;;
     -h|--help)
@@ -89,6 +83,29 @@ fi
 # Compute new version
 # -------------------------
 NEW_VERSION="$(date '+%Y-%m-%d.%H%M')"
+# -------------------------
+# Helpers
+# -------------------------
+open_changelog() {
+  local f="${1:?missing file}"
+  [[ -f "$f" ]] || return 0
+
+  # 允许用户关掉自动打开
+  [[ "${OPEN_CHANGELOG_AFTER_BUMP:-1}" == "1" ]] || return 0
+
+  # 优先用你已有的 EDITOR_CMD（你之前是 code）
+  if [[ -n "${EDITOR_CMD:-}" ]] && command -v "${EDITOR_CMD%% *}" >/dev/null 2>&1; then
+    "$EDITOR_CMD" "$f" >/dev/null 2>&1 || true
+    return 0
+  fi
+
+  # macOS / Linux fallback
+  if command -v open >/dev/null 2>&1; then
+    open "$f" >/dev/null 2>&1 || true
+  elif command -v xdg-open >/dev/null 2>&1; then
+    xdg-open "$f" >/dev/null 2>&1 || true
+  fi
+}
 
 # -------------------------
 # Reason input
@@ -104,6 +121,8 @@ fi
 # -------------------------
 # Changelog: next number
 # -------------------------
+ts="$(date '+%Y-%m-%d %H:%M')"
+# 然后把 "  [$ts]" 拼到条目末尾
 
 touch "$CHANGELOG_FILE"
 
@@ -144,7 +163,7 @@ if [[ "$INCLUDE_GIT_FILES" -eq 1 ]]; then
   fi
 fi
 
-ENTRY="#${NEXT_N}. ${REASON}${GIT_FILES_NOTE}"
+ENTRY="#${NEXT_N}. ${REASON}${GIT_FILES_NOTE} [$ts]"
 
 # -------------------------
 # Insert changelog entry
@@ -157,31 +176,7 @@ if [[ $FORCE_PREPEND -eq 1 ]]; then
     echo "$ENTRY"
     cat "$CHANGELOG_FILE"
   } > "$tmp"
-else
-  # If anchor exists, insert after first match; else prepend
-  if grep -Eq "$ANCHOR_REGEX" "$CHANGELOG_FILE"; then
-    awk -v entry="$ENTRY" -v re="$ANCHOR_REGEX" '
-      BEGIN{done=0}
-      {
-        print $0
-        if (!done && $0 ~ re) {
-          print entry
-          done=1
-        }
-      }
-      END{
-        if(!done){
-          # anchor disappeared during read; prepend fallback not possible here, so append
-          print entry
-        }
-      }
-    ' "$CHANGELOG_FILE" > "$tmp"
-  else
-    {
-      echo "$ENTRY"
-      cat "$CHANGELOG_FILE"
-    } > "$tmp"
-  fi
+
 fi
 
 mv "$tmp" "$CHANGELOG_FILE"
@@ -225,6 +220,9 @@ fi
 # -------------------------
 # Output summary
 # -------------------------
+echo "[WARN] Changelog opened. Press ESC to dismiss any editor overlay before saving."
+open_changelog "$CHANGELOG_FILE"
+
 echo "[OK] NEW_VERSION=${NEW_VERSION}"
 echo "[OK] Changelog updated: ${CHANGELOG_FILE}"
 echo "[OK] Entry: ${ENTRY}"

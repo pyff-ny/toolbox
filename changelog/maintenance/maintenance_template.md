@@ -21,6 +21,18 @@ reports/maintenance/ 或 changelog/maintenance/
 命名：YYYY-MM-DD_<topic>.md
 结构（你会很喜欢这个清晰度）
 
+
+2026-01-29
+你问的“maintenance/commit 怎么写”的最简模板（你以后每次照抄）
+Commit（工程动作）
+refactor(conf): …
+refactor(module): migrate to loader
+Changelog（用户能感知的变化）
+Added/Changed/Fixed 三段，各 1–3 行
+Maintenance（维护者视角）
+Goal / New convention / Migration checklist / Notes
+
+
 # 2026-01-26 | 
 
 # 1. Embedded git repo warning + wrapper drift
