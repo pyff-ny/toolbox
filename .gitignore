@@ -4,6 +4,7 @@
 # local state
 changelog/.last_slug
 _lib/tags.conf
+ops/
 
 
 # raw assets should never be tracked
