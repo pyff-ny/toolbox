@@ -1,0 +1,4 @@
+#!/usr/bin/env bash
+# Auto-generated launcher for: $HOME/toolbox/scripts/system/screenshot_monitor_cn.sh
+SCRIPTS_DIR="${SCRIPTS_DIR:-$HOME/toolbox/scripts}"
+exec "$SCRIPTS_DIR/system/screenshot_monitor_cn.sh" "$@"
