@@ -2,7 +2,6 @@
 
 ## T1 | macOS 上 `rm -r/-rf` 删不掉目录（路径/权限都正确）
 
-#rm #uchg #diskutil #rsync filtered files #wrapper path #fzf #read_tty #Ctrl+C trap
 
 **现象**
 
@@ -33,6 +32,8 @@ rm -rf scripts/media/Lyrics
 ---
 
 ## T2 | macOS 的 `/bin/rm` 不支持 `--help`（“illegal option -- -”）
+#macos #system
+
 
 **现象**
 
@@ -57,6 +58,7 @@ rm -h   # 有些工具支持 -h；rm 通常用 man
 ---
 
 ## T3 | 终端里出现“引号/符号怪异”，脚本变量多了中文引号导致逻辑异常
+#input
 
 **现象**
 
@@ -88,6 +90,7 @@ grep -n '“\|”' -R scripts
 ---
 
 ## T4 | fzf 场景里 `read -r` 读输入不稳定（或 Ctrl+C 行为怪）
+#fzf
 
 **现象**
 
@@ -115,6 +118,8 @@ read_tty() {
 ---
 
 ## T5 | 扁平化菜单后，脚本路径/Wrapper 路径容易漂移（尤其目录结构变更）
+#wrapper
+
 
 **现象**
 
@@ -143,6 +148,7 @@ exec "$SCRIPTS_DIR/<rel_dir>/<file>" "$@"
 ---
 
 ## T6 | Ctrl+C 需求：只中断子脚本，不退出 toolbox 主程序
+#interact#ctrlc
 
 **现象**
 
@@ -174,6 +180,7 @@ trap '' INT
 ---
 
 ## T7 | rsync dry-run 也会“读盘”吗？（SSD data_read 统计困惑）
+#rsync#dry-run#fzf
 
 **现象**
 
@@ -192,15 +199,8 @@ trap '' INT
 
 ---
 
-## English summary
-
-Here’s a toolbox-focused troubleshooting cheat sheet based on your recent real issues. Key items include: macOS immutable flags (`uchg/schg`) blocking `rm -rf`, BSD `rm` not supporting `--help`, full-width Chinese quotes breaking scripts, using `/dev/tty` for reliable input in fzf flows, wrapper/path drift after directory refactors, and Ctrl+C isolation via subshell traps.
-行，我继续把“最近你对话里出现的坑”补全到速查表里，保持同样的格式：**现象 → 判定 → 修复 → 预防**，并尽量贴近你 toolbox 的真实场景。
-
----
-
 ## T8 | `eject /dev/diskX` 报错（用错命令/对象）
-
+#tools
 **现象**
 
 * 你在 macOS 上执行类似：
@@ -247,7 +247,7 @@ diskutil eject /dev/disk5
 ---
 
 ## T9 | “filtered files” 是什么意思（rsync 输出理解）
-
+#rsync
 **现象**
 
 * rsync 输出里出现 `filtered files`，你不确定含义
@@ -282,7 +282,7 @@ rsync -avn --itemize-changes ...
 ---
 
 ## T10 | 三级菜单→扁平化后，“边界”导致路径拼接错
-
+#structure
 **现象**
 
 * 菜单能选中脚本，但执行报：
@@ -318,7 +318,7 @@ echo "[DBG] REL=$REL DIR=$DIR FILE=$FILE" >/dev/tty
 ---
 
 ## T11 | wrapper 白名单/命名不一致导致“旧 wrapper 干扰”
-
+#wrapper
 **现象**
 
 * 你提到“白名单不一致/需要删旧 wrappers 吗？”
@@ -355,7 +355,7 @@ grep -R "toolbox/scripts" "$HOME/toolbox/bin"
 ---
 
 ## T12 | macOS 手势/快捷键与 Windows/VM 映射混乱（“Command+R 变 Spotlight”）
-
+#system
 **现象**
 
 * 同一套键位在 iMac/VMware/Windows 里行为不同
@@ -389,7 +389,7 @@ grep -R "toolbox/scripts" "$HOME/toolbox/bin"
 ---
 
 ## T13 | zsh 插件：补全/高亮/建议（“三个必要插件”）
-
+#zsh 
 **现象**
 
 * 你要“高亮、自动补全、历史建议”三件套
@@ -417,7 +417,7 @@ grep -R "toolbox/scripts" "$HOME/toolbox/bin"
 
 
 ## T14 | 成过程
-#生成过程
+#interact#ctrlc
 
 **Created**: 2026-01-28 02:37
 
@@ -446,7 +446,7 @@ grep -R "toolbox/scripts" "$HOME/toolbox/bin"
 - 
 
 ## T15 | test: how to use opesearch_troubleshootig.sh
-#tools #interaction
+#interact
 
 **Created**: 2026-01-28 09:04
 
@@ -465,6 +465,133 @@ grep -R "toolbox/scripts" "$HOME/toolbox/bin"
 ```bash
 # paste fix commands
 ```
+
+**E. 回归测试（Verify）**
+```bash
+# how to confirm it's resolved
+```
+
+**F. 预防（Prevention）**
+- 
+
+## T16 | zsh出现suspended job数量提示
+#zsh
+
+**Created**: 2026-01-28 13:16
+
+**A. 触发（Friction）**
+- 提示符左侧出现数字，比如2
+- ctrl z
+
+**B. 证据（Evidence）**
+```bash
+# paste commands + outputs
+```
+![zsh suspended jobs](../changelog/_assets/2026-01-28_zsh_suspended_jobs.png)
+**C. 判定（Diagnosis）**
+- ctrl z触发
+
+**D. 修复（Fix）**
+```bash
+# paste fix commands
+```
+- jobs / kill 
+- exit
+**E. 回归测试（Verify）**
+```bash
+# how to confirm it's resolved
+```
+- 提示符旁边的数字消失
+**F. 预防（Prevention）**
+- trap ''TSTP
+
+## T17 | toolbox:Ctrl+C后主程序被杀掉/不能“返回菜单”(set -e +130)
+#interact #ctrlc #bash #zsh #set_e #trap
+
+**Created**: 2026-01-28 14:44
+
+**A. 触发（Friction）**
+- 在toolbox里运行子脚本按ctrl c
+- 预期：只中断子脚本，回到菜单
+- 实际：toolbox主程序也直接退出（回到shell）或流程断掉
+
+**B. 证据（Evidence）**
+```bash
+# paste commands + outputs
+```
+![ctrlc toolbox shell](../changelog/_assets/2026-01-28_ctrlc_toolbox.png)
+
+**C. 判定（Diagnosis）**
+- 1. 看主脚本是否启用 errexit
+`grep -n 'set -.*e' toolbox_supper_compatible.sh
+
+**D. 修复（Fix）**
+```bash
+# paste fix commands
+```
+
+**E. 回归测试（Verify）**
+```bash
+# how to confirm it's resolved
+```
+
+**F. 预防（Prevention）**
+- 
+
+## T18 | 截图证据管理导致repo膨胀/手动成本高
+#github#screenshot
+
+**Created**: 2026-01-28 16:05
+
+**A. 触发（Friction）**
+- 截图落在Desktop，需要手动重命名/复制到assets；assets进git导致体积增长快
+
+**B. 证据（Evidence）**
+```bash
+# paste commands + outputs
+```
+
+**C. 判定（Diagnosis）**
+- 证据留存需求与代码仓库侧路未分层（raw与publish未分离）
+
+**D. 修复（Fix）**
+```bash
+# paste fix commands
+```
+- 分层：assets/ （压缩/进git） + assets_raw/ （原图，不进git）
+- 自动化：提供import_screenshot--一键完成“选择-重命名-压缩-落位”
+
+**E. 回归测试（Verify）**
+```bash
+# how to confirm it's resolved
+```
+
+**F. 预防（Prevention）**
+- assets设置体积红线（例如 单图 > 500KB必须压缩；raw永不进git）
+- 
+
+## T19 | git push no work(untracked files)
+#git#macos#troubleshooting
+
+**Created**: 2026-01-29 01:39
+
+**A. 触发（Friction）**
+- git push no work
+
+**B. 证据（Evidence）**
+```bash
+# paste commands + outputs
+```
+
+**C. 判定（Diagnosis）**
+- push 只推commit；untracked 没add/commit不会被push
+
+**D. 修复（Fix）**
+```bash
+# paste fix commands
+```
+![git untracked no push](/changelog/_assets/20260129_014207_git-untracked-no-push.png)
+
 
 **E. 回归测试（Verify）**
 ```bash

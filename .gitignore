@@ -1,6 +1,14 @@
 # macOS
 .DS_Store
 
+# local state
+changelog/.last_slug
+_lib/tags.conf
+
+
+# raw assets should never be tracked
+changelog/_assets_raw/
+
 # Editors / IDE
 .vscode/
 .idea/
@@ -28,3 +36,4 @@ tmp/
 .env
 .env.*
 
+assets_raw/

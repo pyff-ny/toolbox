@@ -1,5 +1,7 @@
 # toolbox
 
+# 所有技术证据必须通过 import_screenshot.sh 进入仓库，禁止手工拷贝。
+
 # 变更流程
  1. 变更点一句话（scope）
  2. shellcheck / 最小运行测试（smoke test）
