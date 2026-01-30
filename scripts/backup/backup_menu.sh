@@ -1,8 +1,16 @@
 #!/usr/bin/env bash
 # backup_menu.sh - 备份脚本专用交互式菜单
 
-BACKUP_SCRIPT="$HOME/toolbox/scripts/backup/rsync_backup.sh"
-LOG_DIR="$HOME/toolbox/Logs"
+set -euo pipefail
+TOOLBOX_DIR="${TOOLBOX_DIR:-$HOME/toolbox}"
+LOG_DIR="${LOG_DIR:-$TOOLBOX_DIR/_out/Logs}"
+BACKUP_SCRIPT="${TOOLBOX_DIR}/scripts/backup/rsync_backup_final.sh"
+
+source "$TOOLBOX_DIR/scripts/_lib/load_conf.sh"
+load_module_conf "ssh_sync" \
+    "DEST_HOST" "DEST_USER" || exit $?
+
+CONF_PATH="${TOOLBOX_CONF_USED:-}"
 
 menu_backup() {
   cat <<'EOF'
@@ -12,14 +20,12 @@ menu_backup() {
 
 1) Run Backup (Real)
 2) Run Dry-Run (Test)
-3) View Last Log
-4) View All Logs
-5) Edit Config
-6) Test SSH Connection
-7) Schedule Daily Backup
-8) Exit
-
-Enter choice [1-8]: 
+3) View All Logs
+4) Edit Config
+5) Test SSH Connection
+6) Schedule Daily Backup
+7) Exit
+Enter choice [1-7]: 
 EOF
 }
 
@@ -40,27 +46,18 @@ while true; do
       echo "Press Enter to continue..."
       read -r
       ;;
+   
     3)
-      LAST_LOG=$(ls -t "$LOG_DIR"/rsync_backup_*.log 2>/dev/null | head -n 1)
-      if [[ -n "$LAST_LOG" ]]; then
-        echo "▶ Viewing: $LAST_LOG"
-        less "$LAST_LOG"
-      else
-        echo "No logs found"
-      fi
-      ;;
-    4)
       echo "▶ Available logs:"
       ls -lht "$LOG_DIR"/rsync_backup_*.log 2>/dev/null | head -n 20
       echo "Press Enter to continue..."
       read -r
       ;;
-    5)
-      ${EDITOR:-nano} "$HOME/toolbox/conf/backup.env"
+    4)
+      ${EDITOR:-nano} "$TOOLBOX_DIR/ops/backup.env"
       ;;
-    6)
+    5)
       echo "▶ Testing SSH connection..."
-      source "$HOME/toolbox/conf/backup.env"
       if ssh -o ConnectTimeout=5 "${DEST_USER}@${DEST_HOST}" "echo OK"; then
         echo "✅ SSH connection successful"
       else
@@ -69,7 +66,7 @@ while true; do
       echo "Press Enter to continue..."
       read -r
       ;;
-    7)
+    6)
       echo "▶ Adding to cron (daily at 2 AM)..."
       CRON_ENTRY="0 2 * * * $BACKUP_SCRIPT"
       (crontab -l 2>/dev/null; echo "$CRON_ENTRY") | crontab -
@@ -77,7 +74,7 @@ while true; do
       echo "Press Enter to continue..."
       read -r
       ;;
-    8)
+    7)
       echo "Goodbye!"
       exit 0
       ;;

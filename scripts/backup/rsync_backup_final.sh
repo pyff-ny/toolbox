@@ -18,7 +18,9 @@ TOOLBOX_ROOT="${TOOLBOX_ROOT:-$HOME/toolbox}"
 SCRIPT_DIR="${SCRIPT_DIR:-$TOOLBOX_ROOT/scripts}"
 source "$SCRIPT_DIR/_lib/load_conf.sh"
 
-load_module_conf "backup" "SRC_DIR" "DST_DIR" "DEST_USER" "DEST_HOST" "REMOTE_DEST_PATH" || exit $?
+load_module_conf "backup" \
+  "SRC_DIR" "DST_DIR" "DEST_USER" "DEST_HOST" \
+  "REMOTE_DEST_PATH" || exit $?
 CONF_PATH="${TOOLBOX_CONF_USED:-}"
 export CONF_PATH
 

@@ -1,0 +1,4 @@
+#!/usr/bin/env bash
+# Auto-generated launcher for: $HOME/toolbox/scripts/backup/sync_reports_real
+SCRIPTS_DIR="${SCRIPTS_DIR:-$HOME/toolbox/scripts}"
+exec "$SCRIPTS_DIR/backup/sync_reports_real" "$@"

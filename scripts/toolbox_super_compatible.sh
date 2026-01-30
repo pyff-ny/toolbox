@@ -2,18 +2,27 @@
 set -Eeuo pipefail
 
 die(){ echo "[ERROR] $*" >&2; exit 1; }
-
+# --- Load libs ---
 TOOLBOX_DIR="${TOOLBOX_DIR:-$HOME/toolbox}"
 SCRIPTS_DIR="${SCRIPTS_DIR:-$TOOLBOX_DIR/scripts}"
 WRAPPER_DIR="${WRAPPER_DIR:-$HOME/toolbox/bin}"
+LIB_DIR="$TOOLBOX_DIR/scripts/_lib"
+# shellcheck source=/dev/null
+source "$TOOLBOX_DIR/_lib/rules.sh" #die,etc
+# shellcheck source=/dev/null
+source "$LIB_DIR/log.sh" # log_ok,log_info,log_warn
+source "$LIB_DIR/std.sh" # std_* uses logging
+
+SCRIPT_TITLE="Lyrics Auto (No VAD)"
+RUN_TS="$(std_now_ts)"
+
+# defaults
+std_default DRY_RUN "false"
+
 EDITOR_CMD="${EDITOR_CMD:-code}"
 
-RULES_SH="$TOOLBOX_DIR/_lib/rules.sh"
-[[ -f "$RULES_SH" ]] || die "rules not found: $RULES_SH"
-# shellcheck source=/dev/null
-source "$RULES_SH"
 
-echo "VERSION_STR="toolbox_super_compatible.sh_2026-01-28.5""
+echo "VERSION_STR="toolbox_super_compatible.sh_2026-01-30.1""
 command -v fzf >/dev/null 2>&1 || die "fzf not found"
 
 # ============================================================
@@ -118,7 +127,8 @@ run_cmd() {
   trap '' INT
   trap 'on_tstp' TSTP
 
-  set +e
+ std_debug_off
+
   (
     trap 'echo; echo "[INFO] Script interrupted. Returning to menu..."; exit 130' INT
     trap 'on_tstp' TSTP
@@ -130,7 +140,7 @@ run_cmd() {
     esac
   )
   exit_code=$?
-  set -e
+  
 
   # 恢复父层 trap
   eval "$old_int"
@@ -264,7 +274,6 @@ open_in_editor() {
     echo "Tip: set EDITOR_CMD=vim or EDITOR_CMD=nano"
   fi
 }
-
 # ---------- Prompt-mode handlers ----------
 lyrics_auto_no_vad() {
   local rel="media/lyrics_auto_no_vad.sh"
@@ -272,17 +281,7 @@ lyrics_auto_no_vad() {
   local file="lyrics_auto_no_vad.sh"
   [[ -f "$dir/$file" ]] || die "lyrics script not found: $dir/$file"
 
-  local in lang mode interval
-  in="$(read_tty "Audio file path: ")"
-  [[ -n "$in" ]] || { echo "[WARN] cancelled"; return 0; }
-  [[ -f "$in" ]] || die "audio file not found: $in"
-
-  lang="$(read_tty "Lang (default: en): ")"; lang="${lang:-en}"
-  mode="$(read_tty "Mode (auto|fixed|hybrid) (default: hybrid): ")"; mode="${mode:-hybrid}"
-  interval="$(read_tty "Interval seconds (default: 12): ")"; interval="${interval:-12}"
-
-  echo
-  run_cmd "$rel" "$dir" "$file" "$in" "$lang" "$mode" "$interval"
+  run_cmd "$rel" "$dir" "$file"
 }
 
 lyrics_import_obsidian() {

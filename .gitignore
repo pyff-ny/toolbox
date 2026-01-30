@@ -41,3 +41,16 @@ tmp/
 node_modules/
 __pycache__/
 *.pyc
+# --- build / generated outputs ---
+_out/
+scripts/media/Lyrics/
+**/work_lyrics_*/
+**/*.full.wav
+**/wav/
+**/txt/
+**/segments.tsv
+**/silence.txt
+**/meta.txt
+
+# --- generated wrappers (if your bin is generated) ---
+bin/

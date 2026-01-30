@@ -1,4 +1,7 @@
 # 故障速查表（Toolbox / macOS / Shell）
+# 交互输入（拖拽路径/确认/选择）→ 只读 /dev/tty
+# 可被管道消费的输出（结果、路径）→ 写 stdout
+# set -u 环境下：所有参数一律用 ${n-}，所有变量一律 {VAR:-default}
 
 ## T1 | macOS 上 `rm -r/-rf` 删不掉目录（路径/权限都正确）
 
@@ -631,6 +634,274 @@ if [[ -s "$CHANGELOG_FILE" && ! -s "$tmp" ]]; then
   die "Refuse to overwrite non-empty changelog with empty content."
 fi
 ```
+## Change
+- bump_toolbox_version now auto-opens changelog after update
+- add guards to prevent changelog from being overwritten to empty
+
+## Why
+- avoid losing release notes due to path mismatch or empty-write bugs
+
+## Risk
+- low; only affects changelog writing/open behavior
+
+## Rollback
+- revert scripts/system/bump_toolbox_version.sh
+
+## Verification
+- run: system_bump_toolbox_version "test"
+- ensure: changelog.md non-empty; new entry prepended; TOOLBOX_VERSION updated
+
+## T21 | Shell作业控制（zsh/bash）
+#shell#zsh#bash#jobs
+
+**Created**: 2026-01-29 19:57
+
+**A. 触发（Friction）**
+  先记住一条铁律
+Ctrl-Z 只会暂停“当前前台进程组”（占着终端的那个）。
+在 prompt 下按 Ctrl-Z：不会产生 job（jobs 仍为空）。
+好，我继续把这份速查表**升级到“现场/生产可用”级别**：加入你以后一定会遇到的边界情形（TTY 输入导致后台停止、SSH 断开、disown/nohup、monitor mode 等），并把格式压缩成你说的那种“翻一眼就能用”。
+
+---
+
+# 故障速查表（增强版）：Job Control / TTY / SSH（zsh/bash）
+
+## A. 一眼判断区（先做这 3 条）
+
+### A1) `jobs` 为空
+
+**判定：** 当前 shell 没有 job（正常）。
+**动作：** 无。
+
+### A2) `jobs -l`
+
+```bash
+jobs -l
+```
+
+**用途：** 同时看到 job号 + PID（后续 fg/bg/kill 都靠它）。
+
+### A3) 谁在占终端？
+
+如果你“像卡住”：
+
+* 先 `Ctrl-C`
+* 再 `stty sane`（救命用）
+* 再查 `jobs -l`
+
+---
+
+## B. 高发故障 1：后台任务突然变成 “Stopped (tty input)”
+
+### 症状
+
+`jobs` 里看到类似：
+
+* `stopped (tty input)` / `tty output` / `suspended (tty input)`
+
+### 判定（考点）
+
+**后台进程尝试从终端读/写**，shell 为了保护终端，给它停了（典型信号：SIGTTIN / SIGTTOU）。
+
+### 处理（标准）
+
+1. 拉回前台让它交互：
+
+```bash
+fg %1
+```
+
+2. 或者改成不读 tty（重定向 stdin）再后台跑：
+
+```bash
+command </dev/null &
+```
+
+3. 需要持续后台写输出就重定向：
+
+```bash
+command >out.log 2>&1 &
+```
+
+### 验证
+
+```bash
+jobs
+```
+
+应从 `stopped (tty input)` → `running`
+
+---
+
+## C. 高发故障 2：关闭终端/断开 SSH 后任务没了
+
+### 症状
+
+你退出 terminal / SSH 断线后，后台任务消失。
+
+### 判定
+
+默认情况下，终端会给该会话的作业发送 **SIGHUP**（挂断信号），很多程序会退出。
+
+### 解决套路（按需求选）
+
+#### 方案 1：从一开始就不依赖终端（最稳）
+
+```bash
+nohup command >out.log 2>&1 &
+```
+
+#### 方案 2：已经在跑了，想让它“脱离当前 shell”
+
+```bash
+disown %1
+```
+
+（zsh/bash 都支持；disown 后它不再是 job，`jobs` 也不会显示它）
+
+#### 方案 3：临时避免 SIGHUP（不如 disown/nohup 清晰）
+
+```bash
+command &
+# 然后：
+disown
+```
+
+---
+
+## D. 高发故障 3：我 `fg` 回来后输入了命令（比如打了 `jobs`），结果又 Ctrl-Z 了
+
+### 现象解释
+
+你在 `fg` 后，前台是 `sleep 100`（或别的程序）。
+你打的 `jobs` 其实不会被执行（因为 shell 不在前台），你按 `Ctrl-Z` 只是把前台程序再暂停一次。
+
+### 处理
+
+先回到 prompt（`Ctrl-C` 或让程序结束），再执行命令。
+
+---
+
+## E. 高发故障 4：`bg` 之后我以为“没在跑”
+
+### 判定
+
+后台 job 不占终端，你看起来“啥都没发生”是正常的。
+
+### 动作
+
+```bash
+jobs
+ps -p <PID>
+tail -f out.log   # 如果你做了输出重定向
+```
+
+---
+
+## F. 进阶：monitor mode / 为什么脚本里 jobs/bg/fg 不好使
+
+### 症状
+
+在脚本里用 `jobs`/`fg`/`bg` 行为奇怪，或提示不支持。
+
+### 判定
+
+Job control 主要面向**交互式 shell**。非交互脚本默认可能没开启 monitor mode。
+
+### 检查
+
+```bash
+set -o | grep monitor
+```
+
+### 开启（仅当你明确需要，且知道风险）
+
+```bash
+set -m
+```
+
+---
+
+## G. “清场”区：我要把环境恢复到干净状态
+
+### G1) 杀掉所有 job（谨慎）
+
+```bash
+jobs -p | xargs -r kill
+```
+
+### G2) 只干掉某个 job
+
+```bash
+jobs -l
+kill %1          # kill job
+kill <PID>       # 或 kill PID
+```
+
+### G3) 终端显示/输入异常的通用复位
+
+```bash
+stty sane
+reset
+```
+
+（`reset` 更重，会重刷终端）
+
+---
+
+# 最小可复制“演练闭环”（60 秒）
+
+```bash
+sleep 100
+# Ctrl-Z
+jobs -l
+bg %1
+jobs
+fg %1
+# Ctrl-Z
+jobs
+kill %1
+jobs
+```
+
+**期望终态：** 最后 `jobs` 无输出（零作业态）。
+
+---
+
+## 你的 toolbox 速查表格式（更压缩，适合 CLI 翻看）
+
+你可以直接用这套模板写更多条目：
+
+* **症状：** …
+  **判定：** …
+  **动作：** `命令`
+  **验证：** `命令` → 期望输出 …
+----
+
+## T22 | unbound variable
+#variable
+
+**Created**: 2026-01-30 07:23
+
+**A. 触发（Friction）**
+- 例如：std.sh line 9: $2: unbound variable / date: unbound variable
+
+**B. 证据（Evidence）**
+```bash
+# paste commands + outputs
+```
+
+**C. 判定（Diagnosis）**
+- set -u 下读取未定义变量/未传参
+
+**D. 修复（Fix）**
+```bash
+# paste fix commands
+```
+* 函数参数写法统一：local x="${1-}" / local y="${2-}"
+* 变量默认：FOO="${FOO:-}" 或 FOO="${FOO:-default}"
+* 不要在“打印 header”阶段引用尚未赋值的变量（header 要放在 args resolve 之后）
+
 
 **E. 回归测试（Verify）**
 ```bash
@@ -639,3 +910,38 @@ fi
 
 **F. 预防（Prevention）**
 - 
+## T23 read_tty: command not found
+#read_tty #ux # std
+原因：你以为 read_tty 在 std/ux 里，但实际没被 source 或函数名不同。
+修复：
+交互输入全部走 _lib/ux.sh，对外暴露固定 API：ux_read_tty / ux_get_default。
+脚本里禁止直接调用 read_tty（避免库漂移）。
+
+## T24  Finder 弹窗选择文件后“路径传不进去”
+#path #finder #macos
+* 原因：你启用了 file picker（可能走了 subshell / stdin 不稳定），而脚本读取是 stdin 导致拿不到键盘输入。
+* 修复：
+  * 对交互输入强制用 /dev/tty：
+    * printf "... " >/dev/tty
+    * IFS= read -r x </dev/tty
+* Finder 选择器不是必须；你现在这种“open 目录 + 拖拽路径”最稳。
+
+## T25 Unknown mode: :hybrid / ValueError ... ':12'
+#hybrid #wrapper
+* 原因：wrapper 传参或用户输入带了 : 前缀（常见于你菜单系统的格式化/显示残留）。
+* 修复：
+  * normalize_mode()：trim → lowercase → 去掉前缀冒号
+  * normalize_interval()：trim → 去冒号 → 数字正则校验
+
+## T26 silence detect 报 “No silence detected”
+#lyrics
+* 原因：音乐背景持续、阈值/持续时间参数不适配。
+* 修复路径：
+  * 仍然用 hybrid（自动 fallback fixed）
+  * 或调参：SILENCE_THRESHOLD（-25dB ~ -40dB SILENCE_DURATION
+  * 或直接 fixed 获得稳定分段
+
+## T27 “危险操作要保留在 ⚠️ wrapper”
+#wrapper #danger
+* 结论：你已确认策略
+  * UX wrapper 只负责“提示 + 确认 + 路由”，危险动作（delete sync等）必须在带 ⚠️ 的入口，且 confirm YES 双重确认。

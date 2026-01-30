@@ -1,5 +1,15 @@
 #!/usr/bin/env bash
+# NOTE: Core write-guard logic is considered stable. Modify with caution.
+
 set -Eeuo pipefail
+
+# Debug switches (user-controlled)
+: "${DEBUG:=0}"         # 1 = enable xtrace
+: "${GUARD_DEBUG:=0}"   # 1 = show guard diagnostics even if DEBUG=0
+
+if [[ "$DEBUG" == "1" ]]; then
+  set -x
+fi
 
 # -------------------------
 # Config (edit if needed)
@@ -7,7 +17,6 @@ set -Eeuo pipefail
 #set -x # Enable debug output
 TOOLBOX_DIR="${TOOLBOX_DIR:-$HOME/toolbox}"
 CHANGELOG_FILE="${CHANGELOG_FILE:-$TOOLBOX_DIR/changelog/changelog.md}"
-
 
 # Optional: where TOOLBOX_VERSION is defined (if you want to auto-edit it)
 # If unset, script will only print new version and write changelog.
@@ -124,6 +133,9 @@ fi
 ts="$(date '+%Y-%m-%d %H:%M')"
 # 然后把 "  [$ts]" 拼到条目末尾
 
+mkdir -p "$(dirname "$CHANGELOG_FILE")"
+[[ -f "$CHANGELOG_FILE" ]] || echo "[WARN] changelog file not found; will create: $CHANGELOG_FILE"
+
 touch "$CHANGELOG_FILE"
 
 # Find max N from lines like: #18. ...
@@ -171,24 +183,49 @@ ENTRY="#${NEXT_N}. ${REASON}${GIT_FILES_NOTE} [$ts]"
 tmp="$(mktemp)"
 trap 'rm -f "$tmp"' EXIT
 
-if [[ $FORCE_PREPEND -eq 1 ]]; then
-  {
-    echo "$ENTRY"
-    cat "$CHANGELOG_FILE"
-  } > "$tmp"
 
+
+# Default behavior: prepend (since anchor logic removed)
+{
+  echo "$ENTRY"
+  cat "$CHANGELOG_FILE"
+} > "$tmp"
+
+# Always write entry first (guarantee tmp non-empty)
+printf '%s\n' "$ENTRY" > "$tmp"
+cat "$CHANGELOG_FILE" >> "$tmp"
+
+# Guard 1 (safer): tmp must contain the new entry number prefix
+# --- Guard (quiet by default) ---
+xtrace_was_on=0
+case "$-" in *x*) xtrace_was_on=1;; esac
+entry_prefix="#${NEXT_N}."
+
+# 默认静音（即使全局 DEBUG=1，也避免这里刷屏）
+set +x
+
+if ! grep -qF "$entry_prefix" "$tmp"; then
+  echo "[ERROR] Refuse to write: entry prefix not found in tmp: $entry_prefix" >&2
+
+  if [[ "${GUARD_DEBUG:-0}" == "1" ]]; then
+    echo "[DEBUG] tmp=$tmp" >&2
+    echo "[DEBUG] first 30 lines of tmp:" >&2
+    sed -n '1,30p' "$tmp" >&2 || true
+    echo "[DEBUG] ENTRY (printf %q):" >&2
+    printf '%q\n' "$ENTRY" >&2
+  fi
+
+  die "Refuse to write: tmp content unexpected (guard)."
 fi
 
-# Guard 1: tmp must contain the entry
-grep -qF "$ENTRY" "$tmp" || die "Refuse to write: entry not found in tmp (bug)."
+# restore xtrace if it was on
+(( xtrace_was_on == 1 )) && set -x
 
 # Guard 2: refuse to clobber a non-empty changelog into empty
 if [[ -s "$CHANGELOG_FILE" && ! -s "$tmp" ]]; then
   die "Refuse to overwrite non-empty changelog with empty content."
 fi
 
-mkdir -p "$(dirname "$CHANGELOG_FILE")"
-[[ -f "$CHANGELOG_FILE" ]] || echo "[WARN] changelog file not found; will create: $CHANGELOG_FILE"
 
 mv "$tmp" "$CHANGELOG_FILE"
 
@@ -233,7 +270,7 @@ fi
 # -------------------------
 echo "[WARN] Changelog opened. Press ESC to dismiss any editor overlay before saving."
 open_changelog "$CHANGELOG_FILE"
-
+echo "[OK] Changedlog updated: ${CHANGELOG_FILE}"
 echo "[OK] NEW_VERSION=${NEW_VERSION}"
 echo "[INFO] CHANGELOG_FILE=$CHANGELOG_FILE"
 echo "[OK] Changelog updated: ${CHANGELOG_FILE}"

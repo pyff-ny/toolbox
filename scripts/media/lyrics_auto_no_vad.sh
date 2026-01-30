@@ -1,7 +1,3 @@
-#!/usr/bin/env bash
-set -euo pipefail
-die(){ echo "[ERROR] $*" >&2; exit 1; }
-
 # Auto pipeline (VAD-free version with multiple detection modes):
 # Modes:
 #   auto  - ffmpeg silencedetect (default)
@@ -20,14 +16,107 @@ die(){ echo "[ERROR] $*" >&2; exit 1; }
 #   Workdir: ~/toolbox/Lyrics/work_lyrics_<songname>/
 # Requirements:
 #   ffmpeg, ffprobe, python3, whisper-cli (whisper-cpp)
+#!/usr/bin/env bash
+set -Eeuo pipefail
 
-IN="${1:?audio file required}"
-LANG="${2:-ja}"
-MODE="${3:-hybrid}"      # auto|fixed|hybrid
-INTERVAL="${4:-12}"      # for fixed/hybrid mode (seconds)
+# --- Load libs ---
+TOOLBOX_DIR="${TOOLBOX_DIR:-$HOME/toolbox}"
+LIB_DIR="$TOOLBOX_DIR/scripts/_lib"
+
+# shellcheck source=/dev/null
+source "$TOOLBOX_DIR/_lib/rules.sh"
+# shellcheck source=/dev/null
+source "$LIB_DIR/std.sh"
+# shellcheck source=/dev/null
+source "$LIB_DIR/log.sh"
+# shellcheck source=/dev/null
+source "$LIB_DIR/ux.sh"
+
+# --- Script metadata ---
+SCRIPT_TITLE="Lyrics Auto (No VAD)"
+RUN_TS="$(std_now_ts)"
+
+trim() {
+  local s="${1-}"
+  s="${s#"${s%%[![:space:]]*}"}"
+  s="${s%"${s##*[![:space:]]}"}"
+  printf "%s" "$s"
+}
+
+normalize_drag_path() {
+  local p="${1-}"
+  p="$(trim "$p")"
+  p="${p%\"}"; p="${p#\"}"
+  p="${p%\'}"; p="${p#\'}"
+  p="${p//\\ / }"          # "\ " -> " "
+  p="${p#file://}"
+  printf "%s" "$p"
+}
+
+read_audio_path_drag() {
+  local pick_dir="${1-}"
+  [[ -d "$pick_dir" ]] || die "AUDIO_PICK_DIR not found: $pick_dir"
+
+  open "$pick_dir" >/dev/null 2>&1 || true
+  printf "Audio file path (drag here): " >/dev/tty
+
+  local raw=""
+  IFS= read -r raw </dev/tty || return 1
+  raw="$(normalize_drag_path "$raw")"
+  [[ -n "$raw" ]] || return 1
+  printf "%s" "$raw"
+}
+
+# 交互：音频/语言（只问一次）
+# ---- Resolve input (CLI first, fallback to interactive) ----
+AUDIO_PICK_DIR="${AUDIO_PICK_DIR:-$HOME/Music/Music}"
+
+IN="${1-}"
+if [[ -n "$IN" ]]; then
+  IN="$(ux_normalize_path "$IN")"
+else
+  IN="$(ux_pick_file_drag "$AUDIO_PICK_DIR" "Audio file path (drag here): " 1)" || exit $?
+fi
+
+LANG_OUT="${2-}"
+if [[ -z "$LANG_OUT" ]]; then
+  LANG_OUT="$(ux_read_tty "Lang (en|ja|zh) (default: en): " "en" 0)" || exit $?
+fi
+
+MODE="${3-hybrid}"
+INTERVAL="${4-12}"
+
+MODE="$(normalize_mode "$MODE")"
+INTERVAL="$(normalize_interval "$INTERVAL")" || die "Invalid INTERVAL: $INTERVAL"
+
+case "$LANG_OUT" in en|ja|zh) ;; *) die "Unsupported LANG_OUT: $LANG_OUT" ;; esac
+
+# --- Output dirs (single source of truth) ---
+LYRICS_DIR="${LYRICS_DIR:-$TOOLBOX_DIR/_out/Lyrics}"
+mkdir -p "$LYRICS_DIR"
+
+BASE="$(basename "$IN")"
+NAME="${BASE%.*}"
+WORK_DIR="${WORK_DIR:-$LYRICS_DIR/work_lyrics_${NAME}}"
+mkdir -p "$WORK_DIR/wav" "$WORK_DIR/txt"
+
+# --- Print header (AFTER args resolved) ---
+std_print_header
+std_kv "RUN_ID"   "$RUN_TS"
+std_kv "Input"    "$IN"
+std_kv "Lang"     "$LANG_OUT"
+std_kv "Mode"     "$MODE"
+std_kv "Interval" "$INTERVAL"
+std_kv "Workdir"  "$WORK_DIR"
+echo
+
+# optional CLI override for mode/interval (no prompt)
+MODE="${3:-$MODE}"
+INTERVAL="${4:-$INTERVAL}"
+
 
 # --- Config ---
-
+LANG_OUT="${LANG_OUT:-en}"  # default to English output
 WHISPER_CLI="$(command -v whisper-cli 2>/dev/null || true)"
 if [[ -z "$WHISPER_CLI" ]]; then
   WHISPER_CLI="/opt/homebrew/Cellar/whisper-cpp/1.8.3/bin/whisper-cli"
@@ -37,6 +126,11 @@ fi
 MODEL="${MODEL:-/opt/homebrew/share/whisper-cpp/models/ggml-small.bin}"
 [[ -f "$MODEL" ]] || die "Model not found: $MODEL"
 
+case "$LANG_OUT" in
+  en|ja|zh) ;;
+  *) die "Unsupported LANG_OUT: $LANG_OUT (use en/ja/zh)" ;;
+esac
+
 # Silence detection parameters (for auto/hybrid modes)
 SILENCE_THRESHOLD="-35dB"  # more sensitive for music with continuous background
 SILENCE_DURATION="0.8"     # longer silence required
@@ -44,32 +138,16 @@ MIN_SEGMENT_DUR="2.0"      # minimum speech segment (ignore very short)
 MAX_SEGMENT_GAP="1.5"      # merge segments closer than this
 MIN_SEGMENTS=3             # if fewer, switch to fixed (hybrid mode)
 
-command -v ffmpeg >/dev/null 2>&1 || { echo "ffmpeg not found"; exit 127; }
-command -v python3 >/dev/null 2>&1 || { echo "python3 not found"; exit 127; }
-[[ -x "$WHISPER_CLI" ]] || { echo "whisper-cli not executable: $WHISPER_CLI"; exit 127; }
-[[ -f "$MODEL" ]] || { echo "model not found: $MODEL"; exit 2; }
-[[ -f "$IN" ]] || { echo "audio not found: $IN"; exit 2; }
+command -v ffmpeg  >/dev/null 2>&1 || die "ffmpeg not found"
+command -v ffprobe >/dev/null 2>&1 || die "ffprobe not found"
+command -v python3 >/dev/null 2>&1 || die "python3 not found"
 
-# --- Prepare workdir ---
-
-TOOLBOX_DIR="${TOOLBOX_DIR:-$HOME/toolbox}"
-SCRIPTS_DIR="${SCRIPTS_DIR:-$TOOLBOX_DIR/scripts}"
-MEDIA_DIR="${MEDIA_DIR:-$SCRIPTS_DIR/media}"
-LYRICS_DIR="${LYRICS_DIR:-$MEDIA_DIR/Lyrics}"
-mkdir -p "$LYRICS_DIR"
-WRAPPER_DIR="${WRAPPER_DIR:-$HOME/toolbox/bin}"
-EDITOR_CMD="${EDITOR_CMD:-code}"
-
-BASE="$(basename "$IN")"
-NAME="${BASE%.*}"
-WORK_DIR="${WORK_DIR:-$LYRICS_DIR/work_lyrics_${NAME}}"
-mkdir -p "$WORK_DIR/wav" "$WORK_DIR/txt"
 
 # Save meta info
 cat > "$WORK_DIR/meta.txt" <<EOF
 title=
-artist=Billy Easton
-lang=$LANG
+artist=
+lang=$LANG_OUT
 source=$IN
 mode_used=$MODE
 interval=$INTERVAL
@@ -183,9 +261,37 @@ with open(out_file, 'w') as f:
     for s, e in segments:
         f.write(f"{s:.3f}\t{e:.3f}\n")
 
-print(f"Created {len(segments)} segments of ~${interval}s each")
+print(f"Created {len(segments)} segments of ~{interval}s each")
+
 PY
 }
+
+read_tty() {
+  local prompt="${1-}"
+  local out=""
+  printf "%s" "$prompt" >/dev/tty
+  IFS= read -r out </dev/tty || return 1
+  printf "%s" "$out"
+}
+
+normalize_mode() {
+  local m="${1-}"
+  m="$(trim "$m")"
+  m="${m,,}"
+  m="${m#:}"
+  printf "%s" "$m"
+}
+
+normalize_interval() {
+  local x="${1-}"
+  x="$(trim "$x")"
+  x="${x#:}"
+  [[ "$x" =~ ^[0-9]+([.][0-9]+)?$ ]] || return 1
+  printf "%s" "$x"
+}
+
+MODE="$(normalize_mode "${MODE:-hybrid}")"
+INTERVAL="$(normalize_interval "${INTERVAL:-12}")" || die "Invalid INTERVAL: ${INTERVAL-}"
 
 # Execute segmentation based on mode
 case "$MODE" in
@@ -251,7 +357,7 @@ PY
 
 # ---- Slice + transcribe ----
 echo "🎵 Transcribing segments..."
-MERGED="${WORK_DIR}/lyrics.ja.srt.txt"
+MERGED="${WORK_DIR}/lyrics.${LANG_OUT}.srt.txt"
 : > "$MERGED"
 
 i=0
@@ -274,7 +380,7 @@ PY
   ffmpeg -y -hide_banner -loglevel error \
     -i "$FULL_WAV" -ss "$S" -t "$DUR" -ar 16000 -ac 1 "$SEG_WAV"
 
-  "$WHISPER_CLI" -m "$MODEL" -l "$LANG" -f "$SEG_WAV" -nt > "$SEG_TXT" 2>&1 || true
+  "$WHISPER_CLI" -m "$MODEL" -l "$LANG_OUT" -f "$SEG_WAV" -nt > "$SEG_TXT" 2>&1 || true
 
   # Extract clean text (remove timestamps, keep only lyrics)
   CLEAN="$(python3 - <<'PY' "$SEG_TXT"
@@ -328,19 +434,22 @@ PY
   echo "✓"
 done < "$SEG"
 
-OUT="/Users/jiali/toolbox/Lyrics/lyrics_${NAME}.${LANG}.srt.txt"
+OUT="$LYRICS_DIR/lyrics_${NAME}.${LANG_OUT}.srt.txt"
 cp "$MERGED" "$OUT"
 
-echo ""
-echo "✅ Done!"
-echo "  Mode:     $MODE"
-echo "  Segments: $i"
-echo "  Output:   $OUT"
-echo "  Workdir:  $WORK_DIR"
-echo ""
-echo "💡 Tips:"
-echo "  Better results? Try:"
-echo "    - hybrid mode with different interval: $0 \"$IN\" $LANG hybrid 8"
-echo "    - fixed mode for consistent segments: $0 \"$IN\" $LANG fixed 10"
-echo "    - Adjust SILENCE_THRESHOLD (-25dB ~ -40dB) in script for auto mode"
+ux_tip "Tips" \
+  "hybrid mode with different interval: $0 \"$IN\" $LANG_OUT hybrid 8" \
+  "fixed mode for consistent segments:  $0 \"$IN\" $LANG_OUT fixed 10" \
+  "Adjust SILENCE_THRESHOLD (-25dB ~ -40dB) for auto mode"
 
+echo ""
+log_info "LOCALLY"  " Mode:  $MODE"
+log_info "LOCALLY"  "  Segments: $i"
+log_info "LOCALLY"  "  Output:   $OUT"
+log_info "LOCALLY"  "  Workdir:  $WORK_DIR"
+
+echo ""
+
+
+ux_open_after "$OUT" "Lyrics output"
+std_footer_summary
