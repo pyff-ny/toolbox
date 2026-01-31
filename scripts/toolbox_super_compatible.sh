@@ -12,6 +12,7 @@ source "$TOOLBOX_DIR/_lib/rules.sh" #die,etc
 # shellcheck source=/dev/null
 source "$LIB_DIR/log.sh" # log_ok,log_info,log_warn
 source "$LIB_DIR/std.sh" # std_* uses logging
+source "$LIB_DIR/ux.sh"  # ux_show_subscript, ux_confirm_delete
 
 SCRIPT_TITLE="Lyrics Auto (No VAD)"
 RUN_TS="$(std_now_ts)"
@@ -110,7 +111,7 @@ run_cmd() {
   local filename="$3"
   shift 3
   local extra_args=("$@")
-
+ 
   echo
   echo "[RUN] $rel  ->  $fullpath/$filename"
   (( ${#extra_args[@]} )) && echo "[ARGS] ${extra_args[*]}"
@@ -127,7 +128,7 @@ run_cmd() {
   trap '' INT
   trap 'on_tstp' TSTP
 
- std_debug_off
+  # 子层：运行子脚本时，Ctrl+C 能中断子脚本并返回到这里
 
   (
     trap 'echo; echo "[INFO] Script interrupted. Returning to menu..."; exit 130' INT
@@ -140,7 +141,7 @@ run_cmd() {
     esac
   )
   exit_code=$?
-  
+
 
   # 恢复父层 trap
   eval "$old_int"

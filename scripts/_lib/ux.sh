@@ -1,279 +1,366 @@
 #!/usr/bin/env bash
-# _lib/ux.sh
-# UX primitives: tty-based, cancel-aware, set -u safe.
-# UX primitives:
-# - read_tty    : read single-line input from /dev/tty
-# - confirm     : yes/no confirmation
-# - choose      : numbered choice
-# - ux_tip      : post-run next-step hints (no control flow)
-# - ux_open_after: open result after success (Finder)
-#
-# Rules:
-# - ux_tip is ONLY used at completion stage
-# - ux_* functions never exit or change return codes
-#Toolbox UX 规范 v1.0（_lib/ux.sh）
-#0. 总原则（必须遵守）
-#交互只从 /dev/tty 读写
-#目的：fzf / 管道 / wrapper 场景稳定，不被 stdin 污染。
-#禁止：裸 read（除非明确 </dev/tty）
-#CLI 参数优先，交互兜底
-#顺序：positional/flags → env default → interactive prompt → cancel
-#目的：脚本可自动化 + 可交互，二者兼容。
-#ux_ 不改变控制流*
-#ux_tip / ux_open_after：只打印/执行辅助动作，不应该 exit，不改变返回码。
-#会改变控制流的只允许：die / 调用者显式判断返回值。
-#取消是正常路径，不是错误
-#用户取消：返回 1 或 130（如果是 Ctrl+C），并由上层打印 [WARN][cancelled] 即可。
-#不要把取消当作 [ERROR]。
-#set -u 下任何变量读写都要安全
-#所有函数入参用 "${1-}"
-#读取可选变量用 "${VAR-}" / "${VAR:-default}"
-#禁止直接 $2 $3（你之前的 std.sh line 9: $2 unbound 就是这个
 set -Eeuo pipefail
 
-# -------------------------
-# Internal helpers
-# -------------------------
-_ux_trim() {
+# ux.sh: interactive helpers (tty-safe)
+# Requires: log.sh (die/log_info/log_warn/...)
+
+# Read one line from /dev/tty (safe under fzf / piped stdio)
+ux_read_tty() {
+  local prompt="${1:-}"
+  local out=""
+  [[ -n "$prompt" ]] && printf "%s" "$prompt" >/dev/tty
+  IFS= read -r out </dev/tty || return 1
+  printf "%s" "$out"
+}
+ux_open_dir() {
+  # ux_open_dir <dir> [msg]
+  local dir="${1:-}"
+  local msg="${2:-}"
+
+  [[ -n "$dir" ]] || { err "ux_open_dir: missing dir"; return 1; }
+
+  # expand ~
+  if [[ "$dir" == "~/"* ]]; then
+    dir="$HOME/${dir#~/}"
+  elif [[ "$dir" == "~" ]]; then
+    dir="$HOME"
+  fi
+
+  if [[ ! -d "$dir" ]]; then
+    err "Directory not found: $dir"
+    return 1
+  fi
+
+  [[ -n "$msg" ]] && info "$msg"
+  kv "Open" "$dir"
+
+  if command -v open >/dev/null 2>&1; then
+    # macOS: force Finder
+    open -a Finder "$dir"
+    local rc=$?
+    if [[ $rc -ne 0 ]]; then
+      err "open failed (rc=$rc): $dir"
+      return 2
+    fi
+    return 0
+  fi
+
+  if command -v xdg-open >/dev/null 2>&1; then
+    xdg-open "$dir" >/dev/null 2>&1 &
+    return 0
+  fi
+
+  warn "No opener found (open/xdg-open)."
+  return 2
+}
+# Default prompt device for interactive reads
+: "${UX_PROMPT_TTY:=/dev/tty}"
+
+ux_is_tty() {
+  # True if stdin+stdout are terminals
+  [[ -t 0 ]] && [[ -t 1 ]]
+}
+
+ux_has_tty() {
+  # True if we can read/write UX_PROMPT_TTY (default /dev/tty)
+  [[ -n "${UX_PROMPT_TTY:-}" ]] && [[ -r "${UX_PROMPT_TTY}" ]] && [[ -w "${UX_PROMPT_TTY}" ]]
+}
+
+need_tty() {
+  # Ensure interactive TTY is available, else exit/return error.
+  #
+  # Usage:
+  #   need_tty              # default message
+  #   need_tty "Custom msg" # custom
+  #
+  # Return codes:
+  #   0 ok
+  #   2 no tty available
+  local msg="${1:-Interactive TTY required (cannot prompt).}"
+
+  if ux_has_tty; then
+    return 0
+  fi
+
+  # Prefer your ux err/die if present, but keep standalone-safe
+  if command -v err >/dev/null 2>&1; then
+    err "$msg"
+    err "Tip: run in an interactive terminal (not via pipe/cron/CI), or set UX_PROMPT_TTY."
+  else
+    printf "[ERROR] %s\n" "$msg" >&2
+    printf "[ERROR] Tip: run in an interactive terminal (not via pipe/cron/CI), or set UX_PROMPT_TTY.\n" >&2
+  fi
+
+  return 2
+}
+ux_normalize_path() {
+  # Normalize paths from drag&drop or user input:
+  # - trim spaces
+  # - strip surrounding quotes
+  # - unescape Finder backslash escapes
+  # - expand ~
+  local raw="${1-}"
+  [[ -n "$raw" ]] || { printf "%s" ""; return 0; }
+
+  # trim
+  while [[ "$raw" == " "* ]]; do raw="${raw# }"; done
+  while [[ "$raw" == *" " ]]; do raw="${raw% }"; done
+
+  # strip surrounding quotes
+  if [[ "$raw" == \"*\" && "$raw" == *\" ]]; then
+    raw="${raw#\"}"; raw="${raw%\"}"
+  elif [[ "$raw" == \'*\' && "$raw" == *\' ]]; then
+    raw="${raw#\'}"; raw="${raw%\'}"
+  fi
+
+  # interpret backslash escapes (Finder drag produces \ )
+  local path
+  path="$(printf '%b' "$raw")"
+
+  # expand ~
+  if [[ "$path" == "~/"* ]]; then
+    path="$HOME/${path#~/}"
+  elif [[ "$path" == "~" ]]; then
+    path="$HOME"
+  fi
+
+  # drop trailing CR
+  path="${path%$'\r'}"
+
+  printf "%s" "$path"
+}
+info() {
+  # info "message..."
+  # Prints an INFO line to stdout.
+  local msg="$*"
+  [[ "${UX_QUIET:-0}" == "1" ]] && return 0
+
+  local prefix='[INFO]'
+  local c="${_ux_c_cyan:-}"
+  local r="${_ux_c_reset:-}"
+
+  if [[ "${UX_COLOR:-1}" == "1" ]] && [[ -n "$c" ]]; then
+    printf "%s%s%s %s\n" "$c" "$prefix" "$r" "$msg"
+  else
+    printf "%s %s\n" "$prefix" "$msg"
+  fi
+}
+
+
+kv() {
+  # ux_kv "Key" "Value" [key_width]
+  local key="${1:-}"
+  local val="${2:-}"
+  local w="${3:-14}"
+
+  [[ -z "$key" ]] && return 0
+
+  # Quiet mode: still show key lines? keep consistent with your style
+  [[ "${UX_QUIET:-0}" == "1" ]] && return 0
+
+  # pad key
+  local pad="$key"
+  local klen=${#pad}
+  if (( klen < w )); then
+    pad="${pad}$(printf '%*s' $((w-klen)) '')"
+  fi
+
+  printf "%s: %s\n" "$pad" "$val"
+}
+ux_log() {
+  # ux_log LEVEL MESSAGE...
+  #
+  # LEVEL: DEBUG|INFO|OK|WARN|ERR
+  #
+  # Env:
+  #   UX_LOG_FILE   : log file path (if empty -> no file logging)
+  #   UX_LOG_TS     : 1=timestamp (default 1)
+  #   UX_LOG_PID    : 1=include pid (default 0)
+  #   UX_LOG_TAG    : tag string (default: basename $0)
+  #   UX_LOG_LEVEL  : minimum level to write (DEBUG/INFO/WARN/ERR) default INFO
+  #
+  local level="${1:-INFO}"; shift || true
+  local msg="$*"
+
+  : "${UX_LOG_TS:=1}"
+  : "${UX_LOG_PID:=0}"
+  : "${UX_LOG_LEVEL:=INFO}"
+  : "${UX_LOG_TAG:=$(basename "${0:-shell}")}"
+
+  # --- level gating (file + console) ---
+  # order: DEBUG(10) < INFO(20) < OK(20) < WARN(30) < ERR(40)
+  local lv_req=20 lv_cur=20
+  _ux_level_num() {
+    case "$1" in
+      DEBUG) echo 10 ;;
+      INFO)  echo 20 ;;
+      OK)    echo 20 ;;
+      WARN)  echo 30 ;;
+      ERR)   echo 40 ;;
+      *)     echo 20 ;;
+    esac
+  }
+  lv_req="$(_ux_level_num "${UX_LOG_LEVEL}")"
+  lv_cur="$(_ux_level_num "${level}")"
+  if (( lv_cur < lv_req )); then
+    return 0
+  fi
+
+  # --- console output (use existing helpers if present) ---
+  case "$level" in
+    DEBUG) dbg  "$msg" ;;
+    INFO)  info "$msg" ;;
+    OK)    ok   "$msg" ;;
+    WARN)  warn "$msg" ;;
+    ERR)   err  "$msg" ;;
+    *)     say  "$msg" ;;
+  esac
+
+  # --- file output ---
+  [[ -n "${UX_LOG_FILE:-}" ]] || return 0
+
+  # ensure parent dir
+  local log_dir
+  log_dir="$(dirname "$UX_LOG_FILE")"
+  [[ -d "$log_dir" ]] || mkdir -p "$log_dir" 2>/dev/null || true
+
+  # timestamp
+  local ts=""
+  if [[ "${UX_LOG_TS}" == "1" ]]; then
+    ts="$(date '+%Y-%m-%d %H:%M:%S')"
+  fi
+
+  # pid
+  local pid=""
+  if [[ "${UX_LOG_PID}" == "1" ]]; then
+    pid=" pid=$$"
+  fi
+
+  # single-line normalize (avoid breaking log format)
+  # (replace CR/LF with \n markers)
+  local safe_msg="$msg"
+  safe_msg="${safe_msg//$'\r'/\\r}"
+  safe_msg="${safe_msg//$'\n'/\\n}"
+
+  # format:
+  # 2026-01-31 02:41:03 [INFO] tag=lyrics_auto_no_vad.sh pid=12345 msg=...
+  if [[ -n "$ts" ]]; then
+    printf "%s [%s] tag=%s%s msg=%s\n" "$ts" "$level" "$UX_LOG_TAG" "$pid" "$safe_msg" >>"$UX_LOG_FILE"
+  else
+    printf "[%s] tag=%s%s msg=%s\n" "$level" "$UX_LOG_TAG" "$pid" "$safe_msg" >>"$UX_LOG_FILE"
+  fi
+
+  return 0
+}
+
+ux_pick_file_drag() {
+  local prompt="${1:-Path (drag & drop): }"
+  local must_exist="${2:-1}"
+  local open_dir="${3-}"
+
+  need_tty
+
+  if [[ -n "${open_dir-}" ]]; then
+    ux_open_dir "$open_dir" "Opening folder..." || warn "Open folder failed (continuing)."
+  fi
+
+  local raw path
+  raw="$(ux_read_tty "$prompt" "" 0)" || return $?
+  path="$(ux_normalize_path "$raw")"
+
+  if [[ "$must_exist" == "1" ]]; then
+    [[ -f "$path" ]] || { err "Not a file: $path"; return 2; }
+  fi
+
+  printf "%s" "$path"
+}
+
+ux_trim() {
   local s="${1-}"
   s="${s#"${s%%[![:space:]]*}"}"
   s="${s%"${s##*[![:space:]]}"}"
   printf "%s" "$s"
 }
 
-ux_normalize_path() {
-  local p="${1-}"
-  p="$(_ux_trim "$p")"
+# Generic: read with default; if var already provided, do not prompt.
+# usage: val="$(ux_get_default "$existing" "Prompt: " "default")"
+ux_get_default() {
+  local existing="${1-}"
+  local prompt="${2-}"
+  local def="${3-}"
 
-  # strip surrounding quotes
-  p="${p%\"}"; p="${p#\"}"
-  p="${p%\'}"; p="${p#\'}"
+  if [[ -n "${existing}" ]]; then
+    printf "%s" "${existing}"
+    return 0
+  fi
 
-  # common Terminal drag escapes: "\ " -> " "
-  p="${p//\\ / }"
+  local v=""
+  v="$(ux_read_tty "$prompt")" || return 1
+  v="$(ux_trim "$v")"
+  [[ -n "$v" ]] || v="$def"
+  printf "%s" "$v"
+}
 
-  # strip file://
-  p="${p#file://}"
+# Choose a file (parameter > drag input > optional dialog)
+# usage: f="$(ux_get_file "$incoming" "$default_dir" "Audio file path (drag here, Enter to choose): ")"
+ux_get_file() {
+  local incoming="${1-}"
+  local default_dir="${2:-$HOME}"
+  local prompt="${3:-File path (drag here, Enter to choose): }"
 
+  local p=""
+  p="$(ux_trim "$incoming")"
+
+  # 1) already provided
+  if [[ -n "$p" ]]; then
+    [[ -f "$p" ]] || die "File not found: $p"
+    printf "%s" "$p"
+    return 0
+  fi
+
+  # 2) ask user to drag
+  echo "$prompt" >/dev/tty
+  if ! IFS= read -r p </dev/tty; then
+    return 1
+  fi
+  p="$(ux_trim "$p")"
+
+  # 3) Enter => dialog (macOS)
+  if [[ -z "$p" ]]; then
+    p="$(osascript <<EOF
+set defaultFolder to POSIX file "$default_dir"
+set f to choose file with prompt "Choose a file" default location defaultFolder
+POSIX path of f
+EOF
+)" || return 1
+    p="$(ux_trim "$p")"
+  fi
+
+  [[ -n "$p" ]] || return 1
+  [[ -f "$p" ]] || die "File not found: $p"
   printf "%s" "$p"
 }
 
-_ux_print_tty() { printf "%s" "${1-}" >/dev/tty; }
-_ux_println_tty() { printf "%s\n" "${1-}" >/dev/tty; }
+# Confirm dangerous actions (DELETE). Two-step: type YES, then "press Enter to continue".
+# Returns 0 if confirmed, 1 otherwise.
+ux_confirm_delete() {
+  local prompt="${1:-Type YES to confirm DELETE: }"
+  local ans=""
 
-# read a line from /dev/tty into stdout
-_ux_readline_tty() {
+  ans="$(ux_read_tty "$prompt")" || return 1
+  ans="$(ux_trim "$ans")"
+  [[ "$ans" == "YES" ]] || return 1
+
+  log_warn "LOCALLY" "DELETE confirmed by user input"
+  ux_read_tty "Press ENTER to continue (Ctrl+C to abort)..." >/dev/tty || true
+  return 0
+}
+
+# Read a line from TTY (safe under fzf / redirected stdin)
+read_tty() {
+  local prompt="${1-}"
   local out=""
+  printf "%s" "$prompt" >/dev/tty
   IFS= read -r out </dev/tty || return 1
   printf "%s" "$out"
 }
-
-# Return code constants
-UX_CANCEL=130
-
-# -------------------------
-# Public API
-# -------------------------
-
-# ux_read_tty <prompt> [default] [allow_empty(0|1)]
-ux_read_tty() {
-  local prompt="${1-}"
-  local def="${2-}"
-  local allow_empty="${3-0}"
-
-  [[ -n "$prompt" ]] || return 2
-
-  _ux_print_tty "$prompt"
-  local raw=""
-  if ! raw="$(_ux_readline_tty)"; then
-    return $UX_CANCEL
-  fi
-
-  raw="$(_ux_trim "$raw")"
-  if [[ -z "$raw" ]]; then
-    if [[ -n "$def" ]]; then
-      printf "%s" "$def"
-      return 0
-    fi
-    if [[ "$allow_empty" == "1" ]]; then
-      printf "%s" ""
-      return 0
-    fi
-    return $UX_CANCEL
-  fi
-
-  printf "%s" "$raw"
-  return 0
-}
-
-# ux_confirm <prompt> [word=YES]
-ux_confirm() {
-  local prompt="${1-}"
-  local word="${2-YES}"
-  [[ -n "$prompt" ]] || return 2
-
-  _ux_print_tty "$prompt"
-  local raw=""
-  if ! raw="$(_ux_readline_tty)"; then
-    return $UX_CANCEL
-  fi
-
-  raw="$(_ux_trim "$raw")"
-  [[ -n "$raw" ]] || return $UX_CANCEL
-
-  if [[ "$raw" == "$word" ]]; then
-    return 0
-  fi
-  return 1
-}
-
-# ux_open_dir <dir>
-ux_open_dir() {
-  local d="${1-}"
-  [[ -n "$d" ]] || return 2
-  [[ -d "$d" ]] || return 2
-  command -v open >/dev/null 2>&1 || return 0
-  open "$d" >/dev/null 2>&1 || true
-  return 0
-}
-
-# ux_pick_dir <start_dir> [prompt]
-ux_pick_dir() {
-  local start_dir="${1-}"
-  local prompt="${2-Drag folder here: }"
-
-  [[ -n "$start_dir" ]] || return 2
-  [[ -d "$start_dir" ]] || return 2
-
-  ux_open_dir "$start_dir" || true
-  local raw=""
-  raw="$(ux_read_tty "$prompt" "" 0)" || return $?
-  raw="$(ux_normalize_path "$raw")"
-  [[ -n "$raw" ]] || return $UX_CANCEL
-  [[ -d "$raw" ]] || return 2
-  printf "%s" "$raw"
-  return 0
-}
-
-# ux_open_after <path> [label]
-# - open folder/file in Finder after success
-# - controlled by AUTO_OPEN=1/0 (default: 1)
-ux_open_after() {
-  local p="${1-}"
-  local label="${2-Open}"
-
-  local auto="${AUTO_OPEN:-1}"
-  [[ "$auto" == "1" ]] || return 0
-
-  [[ -n "$p" ]] || return 0
-  command -v open >/dev/null 2>&1 || return 0
-
-  # open directory if file path provided
-  if [[ -f "$p" ]]; then
-    open -R "$p" >/dev/null 2>&1 & disown || true
-    return 0
-  fi
-
-  if [[ -d "$p" ]]; then
-    open "$p" >/dev/null 2>&1 & disown || true
-    return 0
-  fi
-
-  return 0
-}
-
-# ux_pick_file_drag <start_dir> [prompt] [must_exist(1|0)]
-ux_pick_file_drag() {
-  local start_dir="${1-}"
-  local prompt="${2-Audio file path (drag here): }"
-  local must_exist="${3-1}"
-
-  [[ -n "$start_dir" ]] || return 2
-  [[ -d "$start_dir" ]] || return 2
-
-  ux_open_dir "$start_dir" || true
-  local raw=""
-  raw="$(ux_read_tty "$prompt" "" 0)" || return $?
-  raw="$(ux_normalize_path "$raw")"
-  [[ -n "$raw" ]] || return $UX_CANCEL
-
-  if [[ "$must_exist" == "1" ]]; then
-    [[ -f "$raw" ]] || return 2
-  fi
-
-  printf "%s" "$raw"
-  return 0
-}
-
-# ux_choose <prompt> <items...>
-# - uses fzf if available; fallback to numbered menu.
-ux_choose() {
-  local prompt="${1-}"; shift || true
-  [[ -n "$prompt" ]] || return 2
-
-  local items=("$@")
-  [[ ${#items[@]} -gt 0 ]] || return 2
-
-  if command -v fzf >/dev/null 2>&1; then
-    _ux_println_tty "$prompt"
-    local picked=""
-    picked="$(printf "%s\n" "${items[@]}" | fzf --prompt="> " </dev/tty)" || return $UX_CANCEL
-    picked="$(_ux_trim "$picked")"
-    [[ -n "$picked" ]] || return $UX_CANCEL
-    printf "%s" "$picked"
-    return 0
-  fi
-
-  # fallback: numbered
-  _ux_println_tty "$prompt"
-  local i=0
-  for i in "${!items[@]}"; do
-    _ux_println_tty "  $((i+1))) ${items[$i]}"
-  done
-  _ux_println_tty "  q) Cancel"
-
-  local ans=""
-  ans="$(ux_read_tty "Select: " "" 0)" || return $?
-  ans="$(_ux_trim "$ans")"
-  [[ "$ans" != "q" && "$ans" != "Q" ]] || return $UX_CANCEL
-
-  [[ "$ans" =~ ^[0-9]+$ ]] || return 1
-  local idx=$((ans-1))
-  (( idx >= 0 && idx < ${#items[@]} )) || return 1
-  printf "%s" "${items[$idx]}"
-  return 0
-}
-
-# ux_tip <title> <lines...>
-#ux_tip的标准签名（最好固定下来）
-#ux_tip "<Tips>" \
-#  "<tip line 1>" \
-#  "<tip line 2>" \
-#  "<tip line 3>"
-
-ux_tip() {
-  local title="${1-Tips}"; shift || true
-  _ux_println_tty "💡 ${title}:"
-  local line=""
-  for line in "$@"; do
-    _ux_println_tty "  - $line"
-  done
-  return 0
-}
-
-normalize_mode() {
-  local m="${1-}"
-  m="$(_ux_trim "$m")"
-  m="${m,,}"
-  m="${m#:}"
-  printf "%s" "$m"
-}
-
-normalize_interval() {
-  local x="${1-}"
-  x="$(_ux_trim "$x")"
-  x="${x#:}"
-  [[ "$x" =~ ^[0-9]+([.][0-9]+)?$ ]] || return 1
-  printf "%s" "$x"
-}
-

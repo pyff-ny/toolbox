@@ -945,3 +945,47 @@ jobs
 #wrapper #danger
 * 结论：你已确认策略
   * UX wrapper 只负责“提示 + 确认 + 路由”，危险动作（delete sync等）必须在带 ⚠️ 的入口，且 confirm YES 双重确认。
+## T28 | 没有及时备份，昨天的一整天的记录没了
+#backup #github
+
+**Created**: 2026-01-31 01:50
+
+**A. 触发（Friction）**
+- 想搞v2版toolbox，结果搞砸了，v1的功能没有昨天那么完善，v2也没有眉目，一场空！
+
+**B. 证据（Evidence）**
+```bash
+# paste commands + outputs
+```
+
+**C. 判定（Diagnosis）**
+- 但是，我的经历不是假的，我不用这些证明！
+- 知识是学到我大脑中的，不是纸上的！
+
+**D. 修复（Fix）**
+```bash
+# paste fix commands
+```
+
+**E. 回归测试（Verify）**
+```bash
+# how to confirm it's resolved
+```
+
+**F. 预防（Prevention）**
+- 及时备份，所以我开了time machine，每小时备份一次;
+- github,不要同步md文件，这些是我私人的东西！
+- github只同步 代码，配置(*.env.example)，我私人的东西留在我的电脑上，让时间机器备份；
+- 这次经历也算是一种学习，规则没清楚的时候，很容易翻车的！
+
+## T29 | Safety must emerge from structure, not memory.
+#safety
+
+**Created**: 2026-01-31 10:16
+
+**A. 触发（Friction）**
+- toolbox-v1版暂停开发，不完美，但是好在基础core脚本都在，功能够用，只是上层调用不够完善
+
+- 我决定暂停v1，开始重构架构，开始v2的开发
+- 一步一步认真研究，仔细走，慢慢走，不要急！
+- 记录，log，规范化！可审计，可回滚！

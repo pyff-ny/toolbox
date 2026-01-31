@@ -75,7 +75,7 @@ IN="${1-}"
 if [[ -n "$IN" ]]; then
   IN="$(ux_normalize_path "$IN")"
 else
-  IN="$(ux_pick_file_drag "$AUDIO_PICK_DIR" "Audio file path (drag here): " 1)" || exit $?
+  IN="$(ux_pick_file_drag "Audio file path (drag here): " 1 "$AUDIO_PICK_DIR")" || exit $?
 fi
 
 LANG_OUT="${2-}"
@@ -83,8 +83,28 @@ if [[ -z "$LANG_OUT" ]]; then
   LANG_OUT="$(ux_read_tty "Lang (en|ja|zh) (default: en): " "en" 0)" || exit $?
 fi
 
+normalize_interval() {
+  # normalize_interval <interval>
+  # Output: normalized interval string
+  # Exit: 2 on invalid interval
+  local in="${1-}"
+
+  # trim spaces
+  while [[ "$in" == " "* ]]; do in="${in# }"; done
+  while [[ "$in" == *" " ]]; do in="${in% }"; done
+
+  if ! [[ "$in" =~ ^[0-9]+([.][0-9]+)?$ ]]; then
+    err "Invalid INTERVAL: '${1-}'. Must be a positive number."
+    return 2
+  fi
+
+  printf "%s" "$in"
+}
+
+# Optional CLI override for mode/interval (no prompt)
 MODE="${3-hybrid}"
 INTERVAL="${4-12}"
+
 
 MODE="$(normalize_mode "$MODE")"
 INTERVAL="$(normalize_interval "$INTERVAL")" || die "Invalid INTERVAL: $INTERVAL"
@@ -377,7 +397,7 @@ PY
   SEG_WAV="${WORK_DIR}/wav/seg_${i}.wav"
   SEG_TXT="${WORK_DIR}/txt/seg_${i}.txt"
 
-  ffmpeg -y -hide_banner -loglevel error \
+  ffmpeg -nostdin -y -hide_banner -loglevel error \
     -i "$FULL_WAV" -ss "$S" -t "$DUR" -ar 16000 -ac 1 "$SEG_WAV"
 
   "$WHISPER_CLI" -m "$MODEL" -l "$LANG_OUT" -f "$SEG_WAV" -nt > "$SEG_TXT" 2>&1 || true
