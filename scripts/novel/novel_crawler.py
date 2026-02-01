@@ -36,6 +36,7 @@ from pathlib import Path
 
 import requests
 from bs4 import BeautifulSoup
+from typing import List
 
 
 DEFAULT_UA = (
@@ -126,6 +127,77 @@ def make_soup(html: str) -> BeautifulSoup:
     except Exception:
         return BeautifulSoup(html, "html.parser")
 
+def _normalize_confirm(s: str) -> str:
+    # 去首尾空白 + 常见不可见字符/全角空格
+    s = s.strip()
+    s = s.replace("\u3000", "")  # 全角空格
+    s = s.replace("\ufeff", "")  # BOM
+    s = s.replace("\u200b", "")  # zero-width space
+    s = s.replace("\u200c", "").replace("\u200d", "")
+    return s
+
+def confirm_cleanup(prompt: str, token: str) -> bool:
+    """
+    严格确认：必须输入两行
+      1) YES   （必须大写）
+      2) token （精确匹配）
+    """
+    if not sys.stdin.isatty():
+        print("[WARN] Not a TTY; refuse to cleanup (safety).")
+        return False
+
+    try:
+        with open("/dev/tty", "r", encoding="utf-8", errors="ignore") as tty:
+            print(prompt)
+            print("Type YES to confirm, then type the token exactly:")
+            print(f"Token (copy/paste): {token}")
+
+            ans1 = _normalize_confirm(tty.readline())
+            if ans1 != "YES":
+                print("[INFO] Cleanup cancelled.")
+                return False
+
+            ans2 = _normalize_confirm(tty.readline())
+            if ans2 != token:
+                print("[INFO] Cleanup cancelled (token mismatch).")
+                return False
+
+            return True
+    except Exception as e:
+        print(f"[WARN] Cannot read /dev/tty; refuse to cleanup: {e}")
+        return False
+  
+#===清理删除前的“预览”计数（不会删除，只列出待删除文件）===
+def list_scattered_chapters(out_dir: str, keep_files: List[str]) -> List[str]:
+    keep_abs = {os.path.abspath(os.path.realpath(p)) for p in keep_files}
+    hits: List[str] = []
+    for fn in os.listdir(out_dir):
+        if not CHAPTER_MD_RE.match(fn):
+            continue
+        p = os.path.abspath(os.path.realpath(os.path.join(out_dir, fn)))
+        if p in keep_abs:
+            continue
+        hits.append(p)
+    hits.sort()
+    return hits
+
+# 安全检查，防止误删根目录或用户主目录
+# ----------------------------- Safety check for cleanup -----------------------------
+def assert_safe_out_dir(out_dir: str, *, allowed_root: str) -> str:
+    raw = out_dir
+    p = os.path.abspath(os.path.realpath(out_dir))
+    home = os.path.abspath(os.path.expanduser("~"))
+    root = os.path.abspath(os.path.realpath(allowed_root))
+
+    if p in ("/", home):
+        raise RuntimeError(f"Refuse cleanup in unsafe dir: {p} (raw={raw})")
+
+    # 必须在 allowed_root 下面
+    if not (p == root or p.startswith(root + os.sep)):
+        raise RuntimeError(f"Refuse cleanup: out_dir not under allowed_root: {p} (root={root}, raw={raw})")
+
+    print(f"[INFO] Cleanup safe dir confirmed: {p} (raw={raw})")
+    return p
 
 # ----------------------------- TOC parsing -----------------------------
 def extract_chapters_from_toc(toc_html: str, toc_url: str) -> List[Chapter]:
@@ -378,7 +450,7 @@ def prompt(msg: str, default: str = "") -> str:
 def interactive_args() -> argparse.Namespace:
     print("== Novel Crawler ==")
     toc_url = prompt("TOC URL", "https://www.bidutuijian.com/index.html")
-    out_dir = prompt("Output dir", "./out_book")
+    out_dir = prompt("Output dir", "./$HOME/toolbox-data/out_book/")
 
     merge = prompt("Merge filename (blank=skip)", "")
     epub = "n"
@@ -452,7 +524,7 @@ def cleanup_scattered_chapters(out_dir: str, keep_files: List[str]) -> int:
 
     return deleted
 
-def run(ns: argparse.Namespace) -> None:
+def run(ns: argparse.Namespace) -> int:
     out_dir = ns.out
     ensure_dir(out_dir)
 
@@ -516,26 +588,54 @@ def run(ns: argparse.Namespace) -> None:
             if not ok:
                 print("[ERROR] EPUB generation failed")
                 raise SystemExit(2)
+            
             # -1） 任务结束前：打开并高亮最终文件 （人工验收点）
             print(f"[完成] EPUB 已生成: {epub_path}")
             print(f"[完成] 文件夹已自动打开，并在 Finder 中高亮: {epub_path}")
             reveal_in_finder(epub_path)
-            # -2）然后再删除零散文件 （仅在你明确要求时）
-            if getattr(ns, "cleanup", False):
+            victims: List[str] = []
+            token = ""
+    
+            
+            if getattr(ns, "cleanup", True):
+
+                out_dir_safe = assert_safe_out_dir(out_dir, allowed_root=os.path.join(os.getcwd(),"out_book/")) # 安全检查，这里会print日志
+
                 keep = [merged_md, epub_path]
-                deleted_count = cleanup_scattered_chapters(out_dir, keep_files=keep)
-                print(f"[完成] 已删除零散章节文件: {deleted_count} 个")
-        else:
-            # 没有生成 epub，则提示手动打开合并文件
-            print(f"[完成] 文件夹已自动打开，并在 Finder 中高亮: {merged_md}")
-            reveal_in_finder(merged_md)
-            if getattr(ns, "cleanup", False):
-                keep = [merged_md]
-                deleted_count = cleanup_scattered_chapters(out_dir, keep_files=keep)
-                print(f"[完成] 已删除零散章节文件: {deleted_count} 个")
+                victims: List[str] = list_scattered_chapters(out_dir, keep_files=keep)
+
+                print(f"[WARN] Cleanup requested. Will delete {len(victims)} scattered chapter files (001 xxx.md).")
+                
+                # Show some examples
+                all_md_files = [os.path.join(out_dir, fn) for fn in os.listdir(out_dir) if fn.lower().endswith(".md")]
+                #只允许删除符合章节文件命名规范的文件，带“三位数字前缀”的md文件
+                CHAPTER_FILE_RE = re.compile(r"^\d{3}\s+.*\.md$", re.I)
+
+                victims = [
+                    p for p in all_md_files
+                    if CHAPTER_FILE_RE.match(os.path.basename(p))
+                ]
+
+                for ex in victims[:3]:
+                    print(f"[WARN] Example: {os.path.basename(ex)}")
+
+                token = os.path.basename(merged_md)  # 恶意.md
+
+                if confirm_cleanup("[DANGER] About to delete scattered chapter files.", token=token):
+                    deleted_count = cleanup_scattered_chapters(out_dir, keep_files=keep)
+                    print(f"[完成] 已清理零散章节文件: {deleted_count} 个")
+                else:
+                    print("[INFO] Cleanup skipped.")
+                    print("[完成] 所有任务结束。")
+                    return 0
+            # 任务结束前：打开并高亮最终文件 （人工验收点）
+            # -2）然后再删除零散文件 （仅在你明确要求时）
+           
             else:
-                print("[完成] 所有任务结束。")
-                return 0
+                print(f"[完成] 文件夹已自动打开，并在 Finder 中高亮: {merged_md}")
+                reveal_in_finder(merged_md)
+    print("[完成] 所有任务结束。")
+    return 0
 
     
 
@@ -543,8 +643,8 @@ def run(ns: argparse.Namespace) -> None:
 def main() -> int:
     if len(sys.argv) == 1:
         ns = interactive_args()
-        run(ns)
-        return
+        return run(ns)
+        
 
     ap = argparse.ArgumentParser()
     ap.add_argument("toc_url", help="目录页 URL（通常是 000.html）")
