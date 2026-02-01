@@ -997,23 +997,15 @@ jobs
 **A. 触发（Friction）**
 - update
 
-**B. 证据（Evidence）**
-```bash
-# paste commands + outputs
-```
 
-**C. 判定（Diagnosis）**
-- 
 
-**D. 修复（Fix）**
-```bash
-# paste fix commands
-```
+## T31 | novel_crawler update
+#update
 
-**E. 回归测试（Verify）**
-```bash
-# how to confirm it's resolved
-```
-
-**F. 预防（Prevention）**
-- 
+**Created**: 2026-02-01 03:30
+知识点清单（你这一轮实际学到/验证过的）
+* 路径与回落行为：open -R 目标不是 file / 不存在时，Finder 会回落到某目录（常见是 cwd / repo root），造成“高亮错位”。
+* 安全删除的交互设计：YES + token exact match（尤其在中文输入法/大小写/空格差异下必须严格比较）。
+* 安全边界（allowed roots）：删除必须限定在明确的输出根目录内；目录名改变必须触发拒绝。
+* Python 缩进纪律：tab/space 混用会触发 IndentationError，必须统一 4 spaces；VS Code 可一次性格式化/缩进块。
+* v2 import 设计：v2 运行时路径不同，不能直接 import v1 的 _lib；需要把 danger_ops.py 放进 v2 的可导入包路径或用相对导入结构。

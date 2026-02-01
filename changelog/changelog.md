@@ -1,3 +1,19 @@
+#11. changelog update: v6.4 —输出/安全/ux收敛 | 
+Added
+生成 EPUB 后自动在 macOS Finder 中打开并高亮生成的 .epub（open -R），并打印绝对路径。
+引入“危险清理（cleanup scattered chapter md）”的二次确认交互：YES + token 精确匹配（支持中文 token，要求完全一致）。
+新增安全检查：仅允许在白名单输出目录（如 ~/toolbox-data/out_book/...）内执行清理操作，避免误删其他目录。
+新增更清晰的运行日志：merge/epub/reveal/cleanup 的分支都显式输出 [INFO]/[WARN]/[DANGER]/[完成]。
+Changed
+EPUB 输出路径从 repo 内的 ./out_book 迁移为统一数据根目录（例如 ~/toolbox-data/out_book/<book>/...），与代码仓库解耦。
+“Finder reveal”触发条件收敛：仅在 merge+epub 且文件真实存在时执行；未 merge 时只打印 Merge skipped. no epub; no Finder reveal.
+Fixed
+修复：未 merge 时 Finder 仍然打开/高亮到 ~/toolbox-v2 的 bug（根因：对空/无效路径仍执行 open 或 open -R，Finder 回落到 repo/cwd）。
+修复：路径字符串写法错误导致 SyntaxError（如把 OUT_BOOK_ROOT=~/... 写成了“Python 赋值但没加引号/Path”）。
+修复：缩进/混用 tab-space 导致 IndentationError。
+修复：ModuleNotFoundError: No module named '_lib'（v2 运行时 import 路径不对，danger_ops 未放入 v2 或未按包方式引入）。
+Security
+cleanup 增加强校验：目录必须在 allowed roots 内；token 必须 exact match；默认不清理；清理前展示样例文件名与数量。
 #10. changelog update: novel crawler v6.3 — Safety Gates, Unified Output, Danger Ops Extraction | files: docs/Troubleshooting.md,scripts/novel/novel_crawler.py [2026-02-01 01:41]
 ✨ 功能增强（Feature）
 新增 EPUB 生成后自动 Finder 高亮（macOS open -R）
