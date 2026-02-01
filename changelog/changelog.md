@@ -1,3 +1,4 @@
+#9. changelog update: 重新开始记录changelog [2026-01-31 15:53]
 #8. changelog update: lyrics pipeline and ux交互 | files: _lib/rules.sh,_lib/version.sh,changelog/changelog.md,docs/TROUBLESHOOTING_INDEX.md,docs/Troubleshooting.md,scripts/backup/backup_menu.sh,scripts/backup/rsync_backup_final.sh,scripts/backup/sync_reports.sh,scripts/media/lyrics_auto_no_vad.sh,scripts/system/bump_toolbox_version.sh,scripts/toolbox_super_compatible.sh [2026-01-30 07:17]
 Changelog（lyrics pipeline / ux 交互）
 ## Added

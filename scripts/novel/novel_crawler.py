@@ -32,6 +32,7 @@ from dataclasses import dataclass
 from typing import Dict, List, Optional, Tuple
 from urllib.parse import urljoin, urlparse
 from urllib import robotparser
+from pathlib import Path
 
 import requests
 from bs4 import BeautifulSoup
@@ -376,13 +377,13 @@ def prompt(msg: str, default: str = "") -> str:
 
 def interactive_args() -> argparse.Namespace:
     print("== Novel Crawler ==")
-    toc_url = prompt("TOC URL", "https://www.bidutuijian.com/books/yztpingsanguo/000.html")
+    toc_url = prompt("TOC URL", "https://www.bidutuijian.com/index.html")
     out_dir = prompt("Output dir", "./out_book")
 
     merge = prompt("Merge filename (blank=skip)", "")
     epub = "n"
     if merge:
-        epub = prompt("Generate EPUB after merge? (y/N)", "N")
+        epub = prompt("Generate EPUB after merge? (y/N)", "y")
 
     start = prompt("Start chapter index", "1")
     end = prompt("End chapter index", "999999")
@@ -410,6 +411,46 @@ def build_session() -> requests.Session:
     s.headers.update({"User-Agent": DEFAULT_UA})
     return s
 
+def safe_filename(name: str) -> str:
+    name = name.strip()
+    # 去掉 macOS/Windows 不友好的字符
+    name = re.sub(r'[\/:*?"<>|]+', "_", name)
+    # 连续空白压缩
+    name = re.sub(r"\s+", " ", name)
+    return name or "book"
+
+def reveal_in_finder(path: str) -> None:
+    abs_path = os.path.abspath(os.path.realpath(path))
+    if os.path.isfile(abs_path) and sys.platform == "darwin":
+        subprocess.run(["open", "-R", abs_path], check=False)
+
+def build_epub_path(out_dir: str, title: str) -> str:
+    out_dir = os.path.abspath(os.path.realpath(out_dir))
+    Path(out_dir).mkdir(parents=True, exist_ok=True)
+    return os.path.join(out_dir, f"{safe_filename(title)}.epub")
+CHAPTER_MD_RE = re.compile(r"^\d{3}\s+.+\.md$", re.IGNORECASE)
+
+def cleanup_scattered_chapters(out_dir: str, keep_files: List[str]) -> int:
+    """
+    删除 out_dir 下的零散章节 md（001 xxx.md），保留 keep_files 里列出的文件。
+    返回删除数量。
+    """
+    keep_abs = {os.path.abspath(os.path.realpath(p)) for p in keep_files}
+    deleted = 0
+
+    for fn in os.listdir(out_dir):
+        if not CHAPTER_MD_RE.match(fn):
+            continue
+        p = os.path.abspath(os.path.realpath(os.path.join(out_dir, fn)))
+        if p in keep_abs:
+            continue
+        try:
+            os.remove(p)
+            deleted += 1
+        except Exception as e:
+            print(f"[WARN] delete failed: {p} ({e})")
+
+    return deleted
 
 def run(ns: argparse.Namespace) -> None:
     out_dir = ns.out
@@ -465,16 +506,41 @@ def run(ns: argparse.Namespace) -> None:
         print(f"[完成] 已合并: {merged_md}")
 
         if ns.epub:
-            epub_path = os.path.splitext(merged_md)[0] + ".epub"
-            book_title = ns.title or os.path.splitext(os.path.basename(merged_md))[0]
-            ok = pandoc_epub(merged_md, epub_path, title=book_title)
-            if ok:
-                print(f"[完成] EPUB 已生成: {epub_path}")
+            #epub_path = os.path.splitext(merged_md)[0] + ".epub"
+            #ok = pandoc_epub(merged_md, epub_path, title=book_title)
+            
+            book_title = ns.title or os.path.splitext(os.path.basename(merged_md))[0]    # 这里替换成你真实的“动态书名来源”
+            epub_path = build_epub_path(ns.out, book_title)
 
-    print("[完成] 所有任务结束。")
+            ok = pandoc_epub(merged_md, epub_path,title=book_title)   # 你现有的 epub 生成函数
+            if not ok:
+                print("[ERROR] EPUB generation failed")
+                raise SystemExit(2)
+            # -1） 任务结束前：打开并高亮最终文件 （人工验收点）
+            print(f"[完成] EPUB 已生成: {epub_path}")
+            print(f"[完成] 文件夹已自动打开，并在 Finder 中高亮: {epub_path}")
+            reveal_in_finder(epub_path)
+            # -2）然后再删除零散文件 （仅在你明确要求时）
+            if getattr(ns, "cleanup", False):
+                keep = [merged_md, epub_path]
+                deleted_count = cleanup_scattered_chapters(out_dir, keep_files=keep)
+                print(f"[完成] 已删除零散章节文件: {deleted_count} 个")
+        else:
+            # 没有生成 epub，则提示手动打开合并文件
+            print(f"[完成] 文件夹已自动打开，并在 Finder 中高亮: {merged_md}")
+            reveal_in_finder(merged_md)
+            if getattr(ns, "cleanup", False):
+                keep = [merged_md]
+                deleted_count = cleanup_scattered_chapters(out_dir, keep_files=keep)
+                print(f"[完成] 已删除零散章节文件: {deleted_count} 个")
+            else:
+                print("[完成] 所有任务结束。")
+                return 0
+
+    
 
 
-def main() -> None:
+def main() -> int:
     if len(sys.argv) == 1:
         ns = interactive_args()
         run(ns)
@@ -493,10 +559,11 @@ def main() -> None:
     ap.add_argument("--title", default="", help="书名（用于合并标题 & epub metadata），留空则用 merge 文件名")
     ap.add_argument("--ignore-robots", action="store_true", help="忽略 robots.txt（不推荐）")
     ap.add_argument("--force", action="store_true", help="覆盖已存在章节文件（默认跳过用于断点续抓）")
+    ap.add_argument("--cleanup", action="store_true", help="成功生成并高亮后，删除零散章节 md 文件（001 xxx.md）")
 
     ns = ap.parse_args()
-    run(ns)
+    return run(ns)
 
 
 if __name__ == "__main__":
-    main()
+    raise SystemExit( main() )
