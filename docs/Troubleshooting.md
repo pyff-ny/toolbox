@@ -989,3 +989,31 @@ jobs
 - 我决定暂停v1，开始重构架构，开始v2的开发
 - 一步一步认真研究，仔细走，慢慢走，不要急！
 - 记录，log，规范化！可审计，可回滚！
+## T30 | novel_crawler v6.3 — Safety Gates, Unified Output, Danger Ops Extraction
+#novel
+
+**Created**: 2026-02-01 01:40
+
+**A. 触发（Friction）**
+- update
+
+**B. 证据（Evidence）**
+```bash
+# paste commands + outputs
+```
+
+**C. 判定（Diagnosis）**
+- 
+
+**D. 修复（Fix）**
+```bash
+# paste fix commands
+```
+
+**E. 回归测试（Verify）**
+```bash
+# how to confirm it's resolved
+```
+
+**F. 预防（Prevention）**
+- 

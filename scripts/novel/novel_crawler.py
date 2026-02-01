@@ -37,6 +37,14 @@ from pathlib import Path
 import requests
 from bs4 import BeautifulSoup
 from typing import List
+from _lib import danger_ops as dop
+import re
+from pathlib import Path
+import os
+
+#==定义统一输出根目录==
+OUT_ROOT = Path(os.environ.get("TOOLBOX_DATA_DIR", "~/toolbox-data")).expanduser()
+OUT_BOOK_ROOT = Path(os.environ.get("OUT_BOOK_DIR", str(OUT_ROOT / "out_book"))).expanduser()
 
 
 DEFAULT_UA = (
@@ -450,12 +458,15 @@ def prompt(msg: str, default: str = "") -> str:
 def interactive_args() -> argparse.Namespace:
     print("== Novel Crawler ==")
     toc_url = prompt("TOC URL", "https://www.bidutuijian.com/index.html")
-    out_dir = prompt("Output dir", "./$HOME/toolbox-data/out_book/")
-
+    out_dir = prompt("Output dir", "$HOME/toolbox-data/out_book")
+   
     merge = prompt("Merge filename (blank=skip)", "")
     epub = "n"
     if merge:
         epub = prompt("Generate EPUB after merge? (y/N)", "y")
+    
+    cleanup = prompt("Cleanup scattered chapter files after EPUB? (y/N)", "N")
+    cleanup_flag = cleanup.lower().startswith("y")
 
     start = prompt("Start chapter index", "1")
     end = prompt("End chapter index", "999999")
@@ -470,6 +481,7 @@ def interactive_args() -> argparse.Namespace:
         timeout=20,
         merge=merge,
         epub=(epub.lower().startswith("y")),
+        cleanup=cleanup_flag,
         title="",
         ignore_robots=False,
         force=False,
@@ -524,8 +536,17 @@ def cleanup_scattered_chapters(out_dir: str, keep_files: List[str]) -> int:
 
     return deleted
 
+def resolve_out_dir(ns: argparse.Namespace) -> str:
+    # 子目录优先：ns.out；否则用 title；再否则 book
+    sub = (ns.out or ns.title or "book").strip()
+    sub = safe_filename(sub)  # 你已有：把非法字符替换掉
+    out_dir = OUT_BOOK_ROOT / sub
+    out_dir.mkdir(parents=True, exist_ok=True)
+    return str(out_dir)
+
+
 def run(ns: argparse.Namespace) -> int:
-    out_dir = ns.out
+    out_dir = resolve_out_dir(ns)
     ensure_dir(out_dir)
 
     session = build_session()
@@ -582,58 +603,44 @@ def run(ns: argparse.Namespace) -> int:
             #ok = pandoc_epub(merged_md, epub_path, title=book_title)
             
             book_title = ns.title or os.path.splitext(os.path.basename(merged_md))[0]    # 这里替换成你真实的“动态书名来源”
-            epub_path = build_epub_path(ns.out, book_title)
+            epub_path = build_epub_path(out_dir, book_title)
 
             ok = pandoc_epub(merged_md, epub_path,title=book_title)   # 你现有的 epub 生成函数
             if not ok:
                 print("[ERROR] EPUB generation failed")
                 raise SystemExit(2)
             
-            # -1） 任务结束前：打开并高亮最终文件 （人工验收点）
-            print(f"[完成] EPUB 已生成: {epub_path}")
-            print(f"[完成] 文件夹已自动打开，并在 Finder 中高亮: {epub_path}")
-            reveal_in_finder(epub_path)
-            victims: List[str] = []
-            token = ""
-    
-            
-            if getattr(ns, "cleanup", True):
+        # 生成 epub 后
+        dop.reveal_in_finder(epub_path)  # 这里根据你的实际情况调整
 
-                out_dir_safe = assert_safe_out_dir(out_dir, allowed_root=os.path.join(os.getcwd(),"out_book/")) # 安全检查，这里会print日志
+        if ns.merge and ns.epub and getattr(ns, "cleanup", False):
+            # 允许根目录：建议用 repo 下某个统一输出根，比如 repo/out_book 或 repo/_out
+            allowed_root = str(OUT_BOOK_ROOT)
+            out_dir_safe = dop.assert_safe_dir(out_dir, allowed_root=allowed_root,label="cleanup dir")
+            chapter_re = re.compile(r"^\d{3}\s+.*\.md$", re.I)
 
-                keep = [merged_md, epub_path]
-                victims: List[str] = list_scattered_chapters(out_dir, keep_files=keep)
+            token = os.path.basename(merged_md)  # e.g. "易中天品三国.md"
+            deleted = dop.guarded_semantic_cleanup(
+                base_dir=out_dir_safe,
+                allowed_root=allowed_root,
+                match=chapter_re,
+                keep_files=[merged_md, epub_path],
+                token=token,
+                prompt="About to delete scattered chapter files.",
+                examples=3,
+                dry_run=False,
+                recursive=False,
+            )
+            dop.log_done(f"已清理零散章节文件: {deleted} 个")
 
-                print(f"[WARN] Cleanup requested. Will delete {len(victims)} scattered chapter files (001 xxx.md).")
-                
-                # Show some examples
-                all_md_files = [os.path.join(out_dir, fn) for fn in os.listdir(out_dir) if fn.lower().endswith(".md")]
-                #只允许删除符合章节文件命名规范的文件，带“三位数字前缀”的md文件
-                CHAPTER_FILE_RE = re.compile(r"^\d{3}\s+.*\.md$", re.I)
-
-                victims = [
-                    p for p in all_md_files
-                    if CHAPTER_FILE_RE.match(os.path.basename(p))
-                ]
-
-                for ex in victims[:3]:
-                    print(f"[WARN] Example: {os.path.basename(ex)}")
-
-                token = os.path.basename(merged_md)  # 恶意.md
-
-                if confirm_cleanup("[DANGER] About to delete scattered chapter files.", token=token):
-                    deleted_count = cleanup_scattered_chapters(out_dir, keep_files=keep)
-                    print(f"[完成] 已清理零散章节文件: {deleted_count} 个")
-                else:
-                    print("[INFO] Cleanup skipped.")
-                    print("[完成] 所有任务结束。")
-                    return 0
-            # 任务结束前：打开并高亮最终文件 （人工验收点）
-            # -2）然后再删除零散文件 （仅在你明确要求时）
-           
-            else:
-                print(f"[完成] 文件夹已自动打开，并在 Finder 中高亮: {merged_md}")
-                reveal_in_finder(merged_md)
+        else:
+            log_info = "[INFO] Cleanup skipped."
+            print("[完成] 所有任务结束。")
+            return 0
+                   
+    else:
+        print(f"[完成] 文件夹已自动打开，并在 Finder 中高亮: {merged_md}")
+        dop.reveal_in_finder(merged_md)
     print("[完成] 所有任务结束。")
     return 0
 
@@ -647,8 +654,10 @@ def main() -> int:
         
 
     ap = argparse.ArgumentParser()
+
+    ap.add_argument("--cleanup", action="store_true", help="生成合并/epub 后清理零散章节文件（危险，需二次确认）")
+    ap.add_argument("--out", default="", help="输出子目录（可留空=自动用书名）")
     ap.add_argument("toc_url", help="目录页 URL（通常是 000.html）")
-    ap.add_argument("--out", default="./out_book", help="输出目录")
     ap.add_argument("--start", type=int, default=1, help="从第几章开始（按目录顺序，从1计数）")
     ap.add_argument("--end", type=int, default=10**9, help="到第几章结束（含）")
     ap.add_argument("--min-sleep", type=float, default=0.8, help="每章最小延迟秒")
@@ -659,7 +668,6 @@ def main() -> int:
     ap.add_argument("--title", default="", help="书名（用于合并标题 & epub metadata），留空则用 merge 文件名")
     ap.add_argument("--ignore-robots", action="store_true", help="忽略 robots.txt（不推荐）")
     ap.add_argument("--force", action="store_true", help="覆盖已存在章节文件（默认跳过用于断点续抓）")
-    ap.add_argument("--cleanup", action="store_true", help="成功生成并高亮后，删除零散章节 md 文件（001 xxx.md）")
 
     ns = ap.parse_args()
     return run(ns)

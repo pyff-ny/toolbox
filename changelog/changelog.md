@@ -1,3 +1,50 @@
+#10. changelog update: novel crawler v6.3 — Safety Gates, Unified Output, Danger Ops Extraction | files: docs/Troubleshooting.md,scripts/novel/novel_crawler.py [2026-02-01 01:41]
+✨ 功能增强（Feature）
+新增 EPUB 生成后自动 Finder 高亮（macOS open -R）
+新增 统一输出根目录机制
+所有输出统一落到：
+~/toolbox-data/out_book/<subdir>/
+不再依赖 repo 相对路径
+--out 从“路径”语义改为“子目录名”语义
+--epub 自动触发 merge
+当 --epub 且 --merge 为空时，自动生成 merge 文件名
+Interactive 模式增强：
+下载前可选择：是否 cleanup 零散章节文件
+⚠️ 危险操作安全加固（Safety Hardening）
+引入 danger_ops.py 通用危险操作闸门模块
+safe_dir 校验（禁止 /、~、越界目录）
+allowed_root 边界限制
+semantic delete（仅删除匹配章节模式文件）
+dry-run / preview / examples 输出
+实现 两阶段危险确认机制
+必须输入：
+YES（大写精确匹配）
+token（精确匹配，如 恶意.md）
+中文输入法 / 小写 yes 不再误触发
+二次确认从 /dev/tty 读取
+防止 pipe / 重定向误触发删除
+删除前预览：
+删除数量
+前 N 个样例文件名
+🧱 架构改进（Architecture）
+危险动作与业务逻辑解耦：
+core：只做业务
+danger_ops：只做危险闸门
+wrapper：只做入口与授权
+输出路径单一真相（single source of truth）
+resolve_out_dir() 在 run() 起始强制覆盖 ns.out
+cleanup 从：
+basename 白名单
+→ 升级为：
+allowed_root + pattern 语义匹配
+🐛 Bug 修复（Fix）
+修复 pandoc_epub 参数缺失导致 epub 分支静默失败
+修复 ns.merge 为空时 epub 分支不执行
+修复 cleanup 变量未定义（UnboundLocalError）
+修复 cleanup 取消后仍执行删除（缩进/分支错误）
+修复 mixed tab/space 导致 IndentationError
+修复 interactive 默认 ./out_book 覆盖统一输出根的问题
+修复 safe_dir 校验重复打印（重复调用）
 #9. changelog update: 重新开始记录changelog [2026-01-31 15:53]
 #8. changelog update: lyrics pipeline and ux交互 | files: _lib/rules.sh,_lib/version.sh,changelog/changelog.md,docs/TROUBLESHOOTING_INDEX.md,docs/Troubleshooting.md,scripts/backup/backup_menu.sh,scripts/backup/rsync_backup_final.sh,scripts/backup/sync_reports.sh,scripts/media/lyrics_auto_no_vad.sh,scripts/system/bump_toolbox_version.sh,scripts/toolbox_super_compatible.sh [2026-01-30 07:17]
 Changelog（lyrics pipeline / ux 交互）
